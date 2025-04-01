@@ -11,6 +11,7 @@ export default function Sidebar() {
 
   const navigation = [
     { name: 'Dashboard', href: '/dashboard', icon: '📊' },
+    { name: 'Create', href: '/dashboard/create', icon: '✨' },
     { name: 'Portfolio Insights', href: '/dashboard/insights', icon: '🔍' },
     { name: 'AI Strategy', href: '/dashboard/strategy', icon: '🤖' },
     { name: 'Market Analysis', href: '/dashboard/market', icon: '📈' },
