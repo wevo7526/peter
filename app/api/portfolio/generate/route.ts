@@ -1,18 +1,30 @@
 import { NextResponse } from 'next/server';
 import { generatePortfolioRecommendations } from '@/app/services/portfolioAgent';
+import { getSession } from '@auth0/nextjs-auth0';
+import { cookies } from 'next/headers';
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
+    // Initialize cookies first
+    const cookieStore = await cookies();
+    const session = await getSession();
     
-    if (!process.env.ANTHROPIC_API_KEY) {
-      return NextResponse.json(
-        { error: 'ANTHROPIC_API_KEY is not configured' },
-        { status: 500 }
-      );
+    if (!session?.user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const recommendations = await generatePortfolioRecommendations(body);
+    const body = await request.json();
+    const userId = session.user.sub;
+    
+    // Generate recommendations without caching
+    const recommendations = await generatePortfolioRecommendations({
+      age: parseInt(body.age) || 30,
+      income: parseInt(body.income) || 50000,
+      goals: body.goals || 'retirement',
+      riskTolerance: body.riskTolerance || 'moderate',
+      timeHorizon: parseInt(body.timeHorizon) || 20,
+      query: body.query || '',
+    });
     
     return NextResponse.json(recommendations);
   } catch (error) {

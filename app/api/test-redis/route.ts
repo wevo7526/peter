@@ -1,24 +1,20 @@
 import { NextResponse } from 'next/server';
-import client from '@/lib/redis';
 
 export async function GET() {
   try {
-    // Test Redis connection
-    await client.set('test', 'Hello Redis!');
-    const result = await client.get('test');
-    
+    // Return a success message without testing Redis
     return NextResponse.json({ 
       success: true, 
-      message: 'Redis connection successful',
-      testValue: result 
+      message: 'Redis is disabled',
+      testValue: 'Redis is not being used'
     });
   } catch (error) {
-    console.error('Redis connection error:', error);
+    console.error('Error in test route:', error);
     return NextResponse.json(
       { 
         success: false, 
-        error: 'Failed to connect to Redis',
-        details: error instanceof Error ? error.message : 'Unknown error'
+        error: 'An error occurred',
+        details: error instanceof Error ? error.message : String(error)
       },
       { status: 500 }
     );

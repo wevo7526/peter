@@ -124,25 +124,25 @@ User Profile:
 - Risk Tolerance: {riskTolerance}
 - Time Horizon: {timeHorizon} years
 
-Please provide a detailed explanation of your investment strategy and recommendations, followed by a JSON response in the following format:
+Please provide your response in two parts:
 
-[Your detailed explanation should go here, including:
+1. First, provide a detailed explanation of your investment strategy and recommendations, including:
 - Overview of the investment strategy
 - Rationale for asset allocation decisions
 - Risk management approach
 - Expected performance and considerations
-- Key factors influencing the recommendations]
+- Key factors influencing the recommendations
 
-JSON Response:
+2. Then, provide a JSON response with the following format:
 {{
   "portfolio": {{
     "totalValue": number,
     "assetAllocation": [
       {{ "asset": string, "percentage": number }}
     ],
-    "riskScore": number,
-    "expectedReturn": number,
-    "volatility": number,
+    "riskScore": number (between 0 and 1),
+    "expectedReturn": number (as decimal, e.g., 0.08 for 8%),
+    "volatility": number (as decimal, e.g., 0.15 for 15%),
     "sharpeRatio": number
   }},
   "recommendations": [
@@ -155,7 +155,11 @@ JSON Response:
   ]
 }}
 
-Ensure all numbers are valid and percentages sum to 100.`;
+Important:
+- Ensure all percentages in assetAllocation sum to 100
+- RiskScore must be between 0 and 1 (e.g., 0.6 for 60% risk)
+- ExpectedReturn and volatility should be decimals (e.g., 0.08 for 8%)
+- Separate the text explanation from the JSON response with a clear line break`;
 
   return ChatPromptTemplate.fromMessages([
     ['system', systemMessage],
@@ -219,8 +223,11 @@ export async function generatePortfolioRecommendations(input: {
 
     const result = await agent.invoke(formattedInput);
 
-    // Extract JSON from the response
+    // Split the output into text explanation and JSON
+    const parts = result.output.split(/\{[\s\S]*\}/);
+    const textExplanation = parts[0].trim();
     const jsonMatch = result.output.match(/\{[\s\S]*\}/);
+    
     if (!jsonMatch) {
       throw new Error('No valid JSON found in the response');
     }
@@ -228,10 +235,10 @@ export async function generatePortfolioRecommendations(input: {
     // Parse and validate the result
     const parsedResult = portfolioSchema.parse(JSON.parse(jsonMatch[0]));
     
-    // Return both the structured data and the full text output
+    // Return both the structured data and the text explanation
     return {
       ...parsedResult,
-      output: result.output
+      output: textExplanation
     };
   } catch (error) {
     console.error('Error in generatePortfolioRecommendations:', error);
