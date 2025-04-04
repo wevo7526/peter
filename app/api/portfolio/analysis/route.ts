@@ -5,8 +5,7 @@ import { cookies } from 'next/headers';
 
 export async function GET() {
   try {
-    // Initialize cookies first
-    const cookieStore = await cookies();
+    // Get session without passing cookieStore
     const session = await getSession();
     
     if (!session?.user) {
@@ -38,8 +37,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    // Initialize cookies first
-    const cookieStore = await cookies();
+    // Get session without passing cookieStore
     const session = await getSession();
     
     if (!session?.user) {

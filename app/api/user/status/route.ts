@@ -7,8 +7,7 @@ const userStatusStore = new Map<string, string>();
 
 export async function GET(request: Request) {
   try {
-    // Initialize cookies first
-    const cookieStore = await cookies();
+    // Get session directly
     const session = await getSession();
     
     if (!session?.user) {

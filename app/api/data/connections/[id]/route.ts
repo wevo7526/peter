@@ -36,8 +36,7 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
-    // Initialize cookies first
-    const cookieStore = await cookies();
+    // Get session directly
     const session = await getSession();
     
     if (!session?.user) {
@@ -73,8 +72,7 @@ export async function PATCH(
   { params }: { params: { id: string } }
 ) {
   try {
-    // Initialize cookies first
-    const cookieStore = await cookies();
+    // Get session directly
     const session = await getSession();
     
     if (!session?.user) {
@@ -121,8 +119,7 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    // Initialize cookies first
-    const cookieStore = await cookies();
+    // Get session directly
     const session = await getSession();
     
     if (!session?.user) {

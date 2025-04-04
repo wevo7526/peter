@@ -119,8 +119,7 @@ async function storeAIInteraction(userId: string, interaction: any): Promise<voi
 
 export async function POST(request: Request) {
   try {
-    // Initialize cookies first
-    const cookieStore = await cookies();
+    // Get session directly
     const session = await getSession();
     
     if (!session?.user) {

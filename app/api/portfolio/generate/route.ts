@@ -5,8 +5,7 @@ import { cookies } from 'next/headers';
 
 export async function POST(request: Request) {
   try {
-    // Initialize cookies first
-    const cookieStore = await cookies();
+    // Get session directly
     const session = await getSession();
     
     if (!session?.user) {

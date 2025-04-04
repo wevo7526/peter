@@ -83,8 +83,7 @@ async function getAIInteractions(userId: string): Promise<any[]> {
 
 export async function GET(request: Request) {
   try {
-    // Initialize cookies first
-    const cookieStore = await cookies();
+    // Get session directly
     const session = await getSession();
 
     if (!session?.user) {
@@ -130,8 +129,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    // Initialize cookies first
-    const cookieStore = await cookies();
+    // Get session directly
     const session = await getSession();
 
     if (!session?.user) {

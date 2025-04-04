@@ -36,8 +36,7 @@ export async function POST(
   { params }: { params: { id: string; action: string } }
 ) {
   try {
-    // Initialize cookies first
-    const cookieStore = await cookies();
+    // Get session directly
     const session = await getSession();
     
     if (!session?.user) {
