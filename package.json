@@ -10,9 +10,10 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
-    "@auth0/nextjs-auth0": "^3.7.0",
     "@langchain/anthropic": "^0.3.15",
     "@langchain/core": "^0.3.43",
+    "@supabase/ssr": "^0.1.0",
+    "@supabase/supabase-js": "^2.39.3",
     "date-fns": "^4.1.0",
     "langchain": "^0.3.19",
     "next": "15.2.4",

@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server';
-import { getSession } from '@auth0/nextjs-auth0';
+import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { v4 as uuidv4 } from 'uuid';
+import { CookieOptions } from '@supabase/ssr';
+import { RequestCookies } from 'next/dist/server/web/spec-extension/cookies';
 
 // Define interfaces
 interface SavedQuery {
@@ -83,14 +85,34 @@ async function getAIInteractions(userId: string): Promise<any[]> {
 
 export async function GET(request: Request) {
   try {
-    // Get session directly
-    const session = await getSession();
+    const cookieStore = cookies();
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          get(name: string) {
+            return cookieStore.get(name)?.value;
+          },
+          set(name: string, value: string, options: any) {
+            cookieStore.set({ name, value, ...options });
+          },
+          remove(name: string, options: any) {
+            cookieStore.set({ name, value: '', ...options });
+          },
+        },
+      }
+    );
 
-    if (!session?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
     }
 
-    const userId = session.user.sub;
+    const userId = session.user.id;
     
     // Check rate limiting - 30 requests per minute
     const isLimited = await isRateLimited(`research:list:${userId}`, 30, 60);
@@ -129,47 +151,106 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    // Get session directly
-    const session = await getSession();
+    const cookieStore = cookies();
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          get(name: string) {
+            return cookieStore.get(name)?.value;
+          },
+          set(name: string, value: string, options: CookieOptions) {
+            cookieStore.set({ name, value, ...options });
+          },
+          remove(name: string, options: CookieOptions) {
+            cookieStore.set({ name, value: '', ...options });
+          },
+        },
+      }
+    );
 
-    if (!session?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
     }
 
-    const userId = session.user.sub;
-    const body = await request.json();
-    
-    if (!body.query) {
+    const { query, portfolioId } = await request.json();
+    if (!query) {
       return NextResponse.json(
         { error: 'Query is required' },
         { status: 400 }
       );
     }
-    
-    // Check rate limiting - 10 requests per minute
-    const isLimited = await isRateLimited(`research:save:${userId}`, 10, 60);
-    if (isLimited) {
+
+    const researchId = uuidv4();
+    const userId = session.user.id;
+
+    // Store research request in database
+    const { error: dbError } = await supabase
+      .from('research_requests')
+      .insert({
+        id: researchId,
+        user_id: userId,
+        portfolio_id: portfolioId,
+        query,
+        status: 'pending',
+        created_at: new Date().toISOString(),
+      });
+
+    if (dbError) {
+      console.error('Database error:', dbError);
       return NextResponse.json(
-        { error: 'Rate limit exceeded. Please try again later.' },
-        { status: 429 }
+        { error: 'Failed to store research request' },
+        { status: 500 }
       );
     }
-    
-    // Create a new saved query
-    const newQuery: SavedQuery = {
-      id: uuidv4(),
-      query: body.query,
-      timestamp: new Date().toISOString(),
+
+    // Start research process
+    // TODO: Implement research generation logic
+    const research = {
+      id: researchId,
+      query,
+      findings: [
+        'Market analysis shows strong growth potential',
+        'Competitive landscape is evolving rapidly',
+        'Regulatory environment is favorable',
+      ],
+      recommendations: [
+        'Consider increasing exposure to growth sectors',
+        'Monitor regulatory changes closely',
+        'Diversify across multiple subsectors',
+      ],
+      createdAt: new Date().toISOString(),
     };
-    
-    // Store in memory
-    savedQueriesStore.set(newQuery.id, newQuery);
-    
-    return NextResponse.json({ query: newQuery });
+
+    // Update research status in database
+    const { error: updateError } = await supabase
+      .from('research_requests')
+      .update({
+        status: 'completed',
+        findings: research.findings,
+        recommendations: research.recommendations,
+        completed_at: new Date().toISOString(),
+      })
+      .eq('id', researchId);
+
+    if (updateError) {
+      console.error('Update error:', updateError);
+      return NextResponse.json(
+        { error: 'Failed to update research status' },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json(research);
   } catch (error) {
-    console.error('Error in research POST route:', error);
+    console.error('Research error:', error);
     return NextResponse.json(
-      { error: 'Failed to save research query' },
+      { error: 'Failed to generate research' },
       { status: 500 }
     );
   }

@@ -1,33 +1,28 @@
 'use client';
 
 import { useState } from 'react';
-import { useUser } from '@auth0/nextjs-auth0/client';
+import { useRouter } from 'next/navigation';
+import { supabase } from '@/app/lib/supabase';
 
 interface PortfolioResponse {
   portfolio: {
-    totalValue: number;
-    assetAllocation: Array<{
+    id: string;
+    name: string;
+    description: string;
+    riskProfile: string;
+    targetReturn: number;
+    maxDrawdown: number;
+    assetAllocation: {
       asset: string;
       percentage: number;
-    }>;
-    riskScore: number;
-    expectedReturn: number;
-    volatility: number;
-    sharpeRatio: number;
+    }[];
   };
-  recommendations: Array<{
-    type: string;
-    description: string;
-    priority: 'high' | 'medium' | 'low';
-    impact: string;
-  }>;
-  output: string;
+  message: string;
 }
 
-export default function CreatePortfolioPage() {
-  const { user } = useUser();
+export default function CreatePortfolio() {
+  const router = useRouter();
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<PortfolioResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     age: '',
@@ -44,32 +39,45 @@ export default function CreatePortfolioPage() {
     setError(null);
 
     try {
-      const response = await fetch('/api/portfolio/generate', {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        router.push('/auth');
+        return;
+      }
+
+      const response = await fetch('/api/portfolio/create', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({
+          ...formData,
+          userId: user.id,
+        }),
       });
 
       if (!response.ok) {
-        throw new Error('Failed to generate portfolio recommendations');
+        throw new Error('Failed to create portfolio');
       }
 
-      const data = await response.json() as PortfolioResponse;
-      setResult(data);
+      const data: PortfolioResponse = await response.json();
+      router.push(`/dashboard/portfolio/${data.portfolio.id}`);
     } catch (error) {
-      console.error('Error:', error);
-      setError(error instanceof Error ? error.message : 'An error occurred');
+      setError(error instanceof Error ? error.message : 'Failed to create portfolio');
     } finally {
       setLoading(false);
     }
   };
 
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+  };
+
   return (
     <div className="container mx-auto px-4 py-8">
       <h1 className="text-3xl font-bold mb-8">Portfolio Creation</h1>
-      
+
       {/* Main Form */}
       <div className="bg-white rounded-lg shadow-md p-6 mb-8">
         <form onSubmit={handleSubmit} className="space-y-6">
@@ -80,8 +88,9 @@ export default function CreatePortfolioPage() {
             </label>
             <textarea
               id="query"
+              name="query"
               value={formData.query}
-              onChange={(e) => setFormData({ ...formData, query: e.target.value })}
+              onChange={handleChange}
               placeholder="Ask about your portfolio strategy (e.g., 'What's the best asset allocation for my risk tolerance?')"
               className="w-full h-32 p-4 border border-gray-300 rounded-lg focus:ring-emerald-500 focus:border-emerald-500 text-lg"
               disabled={loading}
@@ -100,8 +109,9 @@ export default function CreatePortfolioPage() {
                   <input
                     type="number"
                     id="age"
+                    name="age"
                     value={formData.age}
-                    onChange={(e) => setFormData({ ...formData, age: e.target.value })}
+                    onChange={handleChange}
                     className="block w-full px-4 py-2.5 text-gray-900 placeholder-gray-400 bg-white border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all duration-200"
                     placeholder="Enter your current age"
                     required
@@ -121,8 +131,9 @@ export default function CreatePortfolioPage() {
                   <input
                     type="number"
                     id="income"
+                    name="income"
                     value={formData.income}
-                    onChange={(e) => setFormData({ ...formData, income: e.target.value })}
+                    onChange={handleChange}
                     className="block w-full pl-7 pr-12 py-2.5 text-gray-900 placeholder-gray-400 bg-white border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all duration-200"
                     placeholder="Enter your annual income"
                     required
@@ -140,8 +151,9 @@ export default function CreatePortfolioPage() {
                 <div className="relative">
                   <select
                     id="riskTolerance"
+                    name="riskTolerance"
                     value={formData.riskTolerance}
-                    onChange={(e) => setFormData({ ...formData, riskTolerance: e.target.value })}
+                    onChange={handleChange}
                     className="block w-full px-4 py-2.5 text-gray-900 bg-white border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all duration-200 appearance-none"
                   >
                     <option value="conservative">Conservative</option>
@@ -188,8 +200,9 @@ export default function CreatePortfolioPage() {
                   <input
                     type="number"
                     id="timeHorizon"
+                    name="timeHorizon"
                     value={formData.timeHorizon}
-                    onChange={(e) => setFormData({ ...formData, timeHorizon: e.target.value })}
+                    onChange={handleChange}
                     className="block w-full px-4 py-2.5 text-gray-900 placeholder-gray-400 bg-white border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all duration-200"
                     placeholder="How long do you plan to invest?"
                     required
@@ -203,9 +216,10 @@ export default function CreatePortfolioPage() {
                 </label>
                 <textarea
                   id="goals"
+                  name="goals"
                   rows={3}
                   value={formData.goals}
-                  onChange={(e) => setFormData({ ...formData, goals: e.target.value })}
+                  onChange={handleChange}
                   className="block w-full px-4 py-2.5 text-gray-900 placeholder-gray-400 bg-white border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all duration-200"
                   placeholder="Describe your investment goals (e.g., Retirement planning, buying a house, children's education)"
                   required
@@ -247,91 +261,6 @@ export default function CreatePortfolioPage() {
           </div>
         )}
       </div>
-
-      {/* Results Section */}
-      {result && (
-        <div className="bg-white rounded-lg shadow-md p-6">
-          <h2 className="text-2xl font-semibold text-gray-900 mb-6">Your Portfolio Analysis</h2>
-          
-          {/* Portfolio Summary */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-            <div className="bg-gray-50 p-6 rounded-lg">
-              <h3 className="text-sm font-medium text-gray-500 mb-2">Total Portfolio Value</h3>
-              <p className="text-2xl font-bold text-gray-900">${result.portfolio.totalValue.toLocaleString()}</p>
-            </div>
-            <div className="bg-gray-50 p-6 rounded-lg">
-              <h3 className="text-sm font-medium text-gray-500 mb-2">Risk Score</h3>
-              <p className="text-2xl font-bold text-gray-900">{(result.portfolio.riskScore * 100).toFixed(0)}%</p>
-            </div>
-            <div className="bg-gray-50 p-6 rounded-lg">
-              <h3 className="text-sm font-medium text-gray-500 mb-2">Expected Return</h3>
-              <p className="text-2xl font-bold text-gray-900">{(result.portfolio.expectedReturn * 100).toFixed(1)}%</p>
-            </div>
-            <div className="bg-gray-50 p-6 rounded-lg">
-              <h3 className="text-sm font-medium text-gray-500 mb-2">Sharpe Ratio</h3>
-              <p className="text-2xl font-bold text-gray-900">{result.portfolio.sharpeRatio.toFixed(2)}</p>
-            </div>
-          </div>
-
-          {/* Synopsis Section */}
-          <div className="mb-8">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">Portfolio Synopsis</h3>
-            <div className="bg-gray-50 rounded-lg p-6">
-              <div className="prose max-w-none">
-                <div className="whitespace-pre-wrap text-gray-700">
-                  {result.output}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Asset Allocation */}
-          <div className="mb-8">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">Asset Allocation</h3>
-            <div className="space-y-4">
-              {result.portfolio.assetAllocation.map((allocation, index) => (
-                <div key={index} className="flex items-center">
-                  <div className="w-32 text-sm font-medium text-gray-700">{allocation.asset}</div>
-                  <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-emerald-500 rounded-full"
-                      style={{ width: `${allocation.percentage}%` }}
-                    />
-                  </div>
-                  <div className="w-16 text-right text-sm font-medium text-gray-700">
-                    {allocation.percentage}%
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Recommendations */}
-          <div>
-            <h3 className="text-lg font-medium text-gray-900 mb-4">Recommendations</h3>
-            <div className="space-y-4">
-              {result.recommendations.map((recommendation, index) => (
-                <div key={index} className="bg-gray-50 rounded-lg p-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                      recommendation.priority === 'high'
-                        ? 'bg-red-100 text-red-800'
-                        : recommendation.priority === 'medium'
-                        ? 'bg-yellow-100 text-yellow-800'
-                        : 'bg-green-100 text-green-800'
-                    }`}>
-                      {recommendation.priority.charAt(0).toUpperCase() + recommendation.priority.slice(1)} Priority
-                    </span>
-                    <span className="text-sm font-medium text-gray-500">{recommendation.type}</span>
-                  </div>
-                  <p className="text-gray-700">{recommendation.description}</p>
-                  <p className="mt-2 text-sm text-gray-500">Impact: {recommendation.impact}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 } 

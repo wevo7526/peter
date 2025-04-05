@@ -1,105 +1,105 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useUser } from '@auth0/nextjs-auth0/client';
+import { useRouter } from 'next/navigation';
+import { supabase } from '@/app/lib/supabase';
 
 interface DataConnection {
   id: string;
   name: string;
-  provider: string;
-  status: 'active' | 'inactive' | 'error';
-  lastSynced?: string;
-  dataSources: string[];
+  type: 'broker' | 'bank' | 'manual';
+  status: 'active' | 'pending' | 'error';
+  lastSync: string;
+  accounts: {
+    id: string;
+    name: string;
+    type: string;
+    balance: number;
+  }[];
 }
 
 export default function DataPage() {
-  const { user } = useUser();
-  const [connections, setConnections] = useState<DataConnection[]>([]);
+  const router = useRouter();
   const [loading, setLoading] = useState(true);
+  const [connections, setConnections] = useState<DataConnection[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const fetchConnections = async () => {
-      try {
-        const response = await fetch('/api/data/connections');
-        if (!response.ok) {
-          throw new Error('Failed to fetch data connections');
-        }
-        const data = await response.json();
-        
-        const processedData = data.map((conn: any) => ({
-          ...conn,
-          dataSources: Array.isArray(conn.dataSources) 
-            ? conn.dataSources.map((source: any) => 
-                typeof source === 'string' ? source : source.name || JSON.stringify(source)
-              )
-            : []
-        }));
-        
-        setConnections(processedData);
-      } catch (error) {
-        console.error('Error:', error);
-        setError('Failed to load data connections');
-      } finally {
-        setLoading(false);
+    const checkUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        router.push('/auth');
+        return;
       }
+      setLoading(false);
     };
 
-    fetchConnections();
-  }, []);
+    checkUser();
+  }, [router]);
 
-  const handleConnectionAction = async (connectionId: string, action: 'connect' | 'disconnect' | 'refresh') => {
+  const handleAddConnection = async (type: DataConnection['type']) => {
     try {
-      const response = await fetch(`/api/data/connections/${connectionId}/${action}`, {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        router.push('/auth');
+        return;
+      }
+
+      const response = await fetch('/api/data/connections', {
         method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          type,
+          userId: user.id,
+        }),
       });
-      
+
       if (!response.ok) {
-        throw new Error(`Failed to ${action} connection`);
+        throw new Error('Failed to add connection');
       }
-      
-      const updatedResponse = await fetch('/api/data/connections');
-      if (!updatedResponse.ok) {
-        throw new Error('Failed to fetch updated connections');
-      }
-      const updatedData = await updatedResponse.json();
-      
-      const processedData = updatedData.map((conn: any) => ({
-        ...conn,
-        dataSources: Array.isArray(conn.dataSources) 
-          ? conn.dataSources.map((source: any) => 
-              typeof source === 'string' ? source : source.name || JSON.stringify(source)
-            )
-          : []
-      }));
-      
-      setConnections(processedData);
+
+      const newConnection = await response.json();
+      setConnections(prev => [...prev, newConnection]);
     } catch (error) {
-      console.error('Error:', error);
-      setError(`Failed to ${action} connection`);
+      setError(error instanceof Error ? error.message : 'Failed to add connection');
     }
   };
 
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-emerald-500"></div>
-      </div>
-    );
+    return <div>Loading...</div>;
   }
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-gray-900">Data Connections</h1>
-        <p className="mt-1 text-sm text-gray-500">
-          Manage your data sources and connections
-        </p>
+    <div className="container mx-auto px-4 py-8">
+      <div className="flex justify-between items-center mb-8">
+        <h1 className="text-3xl font-bold">Data Connections</h1>
+        <div className="flex space-x-4">
+          <button
+            onClick={() => handleAddConnection('broker')}
+            className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2"
+          >
+            Add Broker
+          </button>
+          <button
+            onClick={() => handleAddConnection('bank')}
+            className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2"
+          >
+            Add Bank
+          </button>
+          <button
+            onClick={() => handleAddConnection('manual')}
+            className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2"
+          >
+            Manual Entry
+          </button>
+        </div>
       </div>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-          <p className="text-red-700">{error}</p>
+        <div className="mb-4 p-4 bg-red-100 text-red-800 rounded-md">
+          {error}
         </div>
       )}
 
@@ -107,20 +107,24 @@ export default function DataPage() {
         {connections.map((connection) => (
           <div
             key={connection.id}
-            className="bg-white rounded-lg shadow-sm border border-gray-200 p-6"
+            className="bg-white rounded-lg shadow-md p-6"
           >
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex justify-between items-start mb-4">
               <div>
-                <h3 className="text-lg font-medium text-gray-900">{connection.name}</h3>
-                <p className="text-sm text-gray-500">{connection.provider}</p>
+                <h2 className="text-xl font-semibold text-gray-900">
+                  {connection.name}
+                </h2>
+                <p className="text-sm text-gray-500 capitalize">
+                  {connection.type}
+                </p>
               </div>
               <span
-                className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                className={`px-2 py-1 text-xs font-medium rounded-full ${
                   connection.status === 'active'
                     ? 'bg-green-100 text-green-800'
-                    : connection.status === 'error'
-                    ? 'bg-red-100 text-red-800'
-                    : 'bg-gray-100 text-gray-800'
+                    : connection.status === 'pending'
+                    ? 'bg-yellow-100 text-yellow-800'
+                    : 'bg-red-100 text-red-800'
                 }`}
               >
                 {connection.status}
@@ -129,51 +133,34 @@ export default function DataPage() {
 
             <div className="space-y-4">
               <div>
-                <h4 className="text-sm font-medium text-gray-900 mb-2">Data Sources</h4>
-                <div className="flex flex-wrap gap-2">
-                  {connection.dataSources.map((source, index) => (
-                    <span
-                      key={index}
-                      className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800"
-                    >
-                      {source}
-                    </span>
-                  ))}
-                </div>
+                <p className="text-sm text-gray-500">Last Sync</p>
+                <p className="text-sm font-medium text-gray-900">
+                  {new Date(connection.lastSync).toLocaleString()}
+                </p>
               </div>
 
-              {connection.lastSynced && (
-                <div>
-                  <p className="text-sm text-gray-500">
-                    Last synced: {new Date(connection.lastSynced).toLocaleString()}
-                  </p>
+              <div>
+                <p className="text-sm text-gray-500 mb-2">Connected Accounts</p>
+                <div className="space-y-2">
+                  {connection.accounts.map((account) => (
+                    <div
+                      key={account.id}
+                      className="flex justify-between items-center p-2 bg-gray-50 rounded"
+                    >
+                      <div>
+                        <p className="text-sm font-medium text-gray-900">
+                          {account.name}
+                        </p>
+                        <p className="text-xs text-gray-500 capitalize">
+                          {account.type}
+                        </p>
+                      </div>
+                      <p className="text-sm font-medium text-gray-900">
+                        ${account.balance.toLocaleString()}
+                      </p>
+                    </div>
+                  ))}
                 </div>
-              )}
-
-              <div className="flex space-x-2">
-                {connection.status === 'active' ? (
-                  <>
-                    <button
-                      onClick={() => handleConnectionAction(connection.id, 'refresh')}
-                      className="flex-1 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
-                    >
-                      Refresh
-                    </button>
-                    <button
-                      onClick={() => handleConnectionAction(connection.id, 'disconnect')}
-                      className="flex-1 px-3 py-2 text-sm font-medium text-white bg-red-600 rounded-md hover:bg-red-700"
-                    >
-                      Disconnect
-                    </button>
-                  </>
-                ) : (
-                  <button
-                    onClick={() => handleConnectionAction(connection.id, 'connect')}
-                    className="flex-1 px-3 py-2 text-sm font-medium text-white bg-emerald-600 rounded-md hover:bg-emerald-700"
-                  >
-                    Connect
-                  </button>
-                )}
               </div>
             </div>
           </div>

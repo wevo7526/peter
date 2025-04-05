@@ -1,145 +1,162 @@
 'use client';
 
-import { useUser } from '@auth0/nextjs-auth0/client';
-import Image from 'next/image';
-import Link from 'next/link';
-import { useEffect } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { supabase } from '@/app/lib/supabase';
 
 export default function AuthPage() {
-  const { user, error, isLoading } = useUser();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [isSignUp, setIsSignUp] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [verificationSent, setVerificationSent] = useState(false);
   const router = useRouter();
 
-  useEffect(() => {
-    const checkUserStatus = async () => {
-      if (user) {
-        try {
-          const response = await fetch('/api/user/status');
-          if (!response.ok) {
-            throw new Error('Failed to check user status');
-          }
-          
-          const data = await response.json();
-          
-          if (data.hasCompletedOnboarding) {
-            // User has completed onboarding, redirect to dashboard
-            router.push('/dashboard');
-          }
-        } catch (error) {
-          console.error('Error checking user status:', error);
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setLoading(true);
+
+    try {
+      if (isSignUp) {
+        const { data, error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            emailRedirectTo: `${window.location.origin}/auth/callback`,
+          },
+        });
+        if (error) throw error;
+        if (data?.user) {
+          setVerificationSent(true);
+        }
+      } else {
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+        if (error) throw error;
+        if (data?.user) {
+          router.push('/dashboard');
         }
       }
-    };
-
-    checkUserStatus();
-  }, [user, router]);
-
-  const handleSkipOnboarding = async () => {
-    try {
-      const response = await fetch('/api/user/skip-onboarding', {
-        method: 'POST'
-      });
-      
-      if (!response.ok) {
-        throw new Error('Failed to skip onboarding');
-      }
-      
-      router.push('/dashboard');
-    } catch (error) {
-      console.error('Error skipping onboarding:', error);
+    } catch (error: any) {
+      setError(error.message);
+    } finally {
+      setLoading(false);
     }
   };
 
-  if (isLoading) {
+  if (verificationSent) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-white">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-emerald-500"></div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-white">
-        <div className="text-red-500 text-center">
-          <p className="text-xl mb-4">Authentication Error</p>
-          <p>{error.message}</p>
+      <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
+        <div className="sm:mx-auto sm:w-full sm:max-w-md">
+          <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
+            Check your email
+          </h2>
+          <p className="mt-2 text-center text-sm text-gray-600">
+            We've sent you a verification link. Please check your email to continue.
+          </p>
+          <div className="mt-4 text-center">
+            <button
+              onClick={() => setVerificationSent(false)}
+              className="text-sm text-emerald-600 hover:text-emerald-500"
+            >
+              Try a different email
+            </button>
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-white p-4">
-      <div className="w-full max-w-md space-y-8">
-        <div className="text-center">
-          <Image
-            src="/peter.png"
-            alt="Peter Logo"
-            width={120}
-            height={120}
-            className="mx-auto mb-6"
-          />
-          <h2 className="text-3xl font-bold text-gray-900 mb-2">
-            Welcome to Peter
-          </h2>
-          <p className="text-gray-600">
-            Your AI-powered wealth management platform
-          </p>
-        </div>
+    <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
+      <div className="sm:mx-auto sm:w-full sm:max-w-md">
+        <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
+          {isSignUp ? 'Create your account' : 'Sign in to your account'}
+        </h2>
+      </div>
 
-        {user ? (
-          <div className="bg-white shadow rounded-lg p-6">
-            <div className="flex items-center space-x-4 mb-6">
-              <Image
-                src={user.picture || ''}
-                alt={user.name || ''}
-                width={48}
-                height={48}
-                className="rounded-full"
-              />
-              <div>
-                <h3 className="text-lg font-semibold">{user.name}</h3>
-                <p className="text-gray-600">{user.email}</p>
+      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
+        <div className="bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10">
+          <form className="space-y-6" onSubmit={handleSubmit}>
+            {error && (
+              <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-md">
+                {error}
+              </div>
+            )}
+
+            <div>
+              <label htmlFor="email" className="block text-sm font-medium text-gray-700">
+                Email address
+              </label>
+              <div className="mt-1">
+                <input
+                  id="email"
+                  name="email"
+                  type="email"
+                  autoComplete="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm"
+                />
               </div>
             </div>
-            <div className="space-y-4">
-              <Link
-                href="/onboarding/personal"
-                className="w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-emerald-500 hover:bg-emerald-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500"
-              >
-                Start Onboarding
-              </Link>
+
+            <div>
+              <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+                Password
+              </label>
+              <div className="mt-1">
+                <input
+                  id="password"
+                  name="password"
+                  type="password"
+                  autoComplete={isSignUp ? 'new-password' : 'current-password'}
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-emerald-500 focus:border-emerald-500 sm:text-sm"
+                />
+              </div>
+            </div>
+
+            <div>
               <button
-                onClick={handleSkipOnboarding}
-                className="w-full flex justify-center py-3 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500"
+                type="submit"
+                disabled={loading}
+                className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 disabled:opacity-50"
               >
-                Skip Onboarding
+                {loading ? 'Loading...' : isSignUp ? 'Sign up' : 'Sign in'}
               </button>
-              <Link
-                href="/api/auth/logout"
-                className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-red-500 hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+            </div>
+          </form>
+
+          <div className="mt-6">
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-gray-300" />
+              </div>
+              <div className="relative flex justify-center text-sm">
+                <span className="px-2 bg-white text-gray-500">
+                  {isSignUp ? 'Already have an account?' : "Don't have an account?"}
+                </span>
+              </div>
+            </div>
+
+            <div className="mt-6">
+              <button
+                onClick={() => setIsSignUp(!isSignUp)}
+                className="w-full flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500"
               >
-                Sign Out
-              </Link>
+                {isSignUp ? 'Sign in instead' : 'Create an account'}
+              </button>
             </div>
           </div>
-        ) : (
-          <div className="space-y-4">
-            <Link
-              href="/api/auth/login"
-              className="w-full flex justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-emerald-500 hover:bg-emerald-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500"
-            >
-              Sign In
-            </Link>
-            <Link
-              href="/"
-              className="w-full flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500"
-            >
-              Back to Home
-            </Link>
-          </div>
-        )}
+        </div>
       </div>
     </div>
   );
