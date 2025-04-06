@@ -1,132 +1,116 @@
 import { NextResponse } from 'next/server';
-import { getSession } from '@auth0/nextjs-auth0';
+import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
+import { CookieOptions } from '@supabase/ssr';
 
 // Define types for data sources and connections
-interface DataSource {
-  id: string;
-  name: string;
-  type: string;
-  description: string;
-  status: 'active' | 'inactive' | 'error';
-  lastUpdated: string;
-}
-
 interface DataConnection {
   id: string;
+  user_id: string;
   name: string;
-  provider: string;
-  status: 'active' | 'inactive' | 'error';
-  lastSynced?: string;
-  dataSources: string[];
+  type: 'broker' | 'bank' | 'manual';
+  status: 'active' | 'pending' | 'error';
+  last_sync: string;
+  accounts: {
+    id: string;
+    name: string;
+    type: string;
+    balance: number;
+  }[];
 }
 
-// Mock data for data sources
-const mockDataSources: DataSource[] = [
-  {
-    id: 'ds-1',
-    name: 'Stock Market Data',
-    type: 'market_data',
-    description: 'Real-time stock market data from major exchanges',
-    status: 'active',
-    lastUpdated: new Date().toISOString(),
-  },
-  {
-    id: 'ds-2',
-    name: 'Financial News',
-    type: 'news',
-    description: 'Financial news and analysis from trusted sources',
-    status: 'active',
-    lastUpdated: new Date().toISOString(),
-  },
-  {
-    id: 'ds-3',
-    name: 'Economic Indicators',
-    type: 'economic_data',
-    description: 'Key economic indicators and statistics',
-    status: 'active',
-    lastUpdated: new Date().toISOString(),
-  },
-];
-
-// Mock data for connections
-const mockConnections: DataConnection[] = [
-  {
-    id: 'conn-1',
-    name: 'Market Data Connection',
-    provider: 'Financial Data API',
-    status: 'active',
-    lastSynced: new Date().toISOString(),
-    dataSources: ['Stock Market Data', 'Economic Indicators'],
-  },
-  {
-    id: 'conn-2',
-    name: 'News Feed',
-    provider: 'News API',
-    status: 'inactive',
-    dataSources: ['Financial News'],
-  },
-];
-
-export async function GET(request: Request) {
+export async function GET() {
   try {
-    // Get session directly
-    const session = await getSession();
+    const cookieStore = await cookies();
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          get(name: string) {
+            return cookieStore.get(name)?.value;
+          },
+          set(name: string, value: string, options: CookieOptions) {
+            cookieStore.set({ name, value, ...options });
+          },
+          remove(name: string, options: CookieOptions) {
+            cookieStore.delete({ name, ...options });
+          },
+        },
+      }
+    );
     
-    if (!session?.user) {
+    // Get the current user's session
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+    if (sessionError || !session) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const userId = session.user.sub;
-    
-    // Return mock data instead of fetching from Redis
-    return NextResponse.json(mockConnections);
+    // Fetch user's data connections
+    const { data: connections, error: connectionsError } = await supabase
+      .from('data_connections')
+      .select('*')
+      .eq('user_id', session.user.id);
+
+    if (connectionsError) {
+      return NextResponse.json({ error: 'Failed to fetch connections' }, { status: 500 });
+    }
+
+    return NextResponse.json(connections);
   } catch (error) {
-    console.error('Error in data connections route:', error);
-    return NextResponse.json(
-      { error: 'Failed to get data connections' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
 
 export async function POST(request: Request) {
   try {
-    // Get session directly
-    const session = await getSession();
+    const cookieStore = await cookies();
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          get(name: string) {
+            return cookieStore.get(name)?.value;
+          },
+          set(name: string, value: string, options: CookieOptions) {
+            cookieStore.set({ name, value, ...options });
+          },
+          remove(name: string, options: CookieOptions) {
+            cookieStore.delete({ name, ...options });
+          },
+        },
+      }
+    );
     
-    if (!session?.user) {
+    // Get the current user's session
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+    if (sessionError || !session) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const userId = session.user.sub;
-    const body = await request.json();
-    
-    if (!body.name || !body.provider) {
-      return NextResponse.json(
-        { error: 'Name and provider are required' },
-        { status: 400 }
-      );
+    const { type } = await request.json();
+
+    // Create a new data connection
+    const { data: connection, error: createError } = await supabase
+      .from('data_connections')
+      .insert({
+        user_id: session.user.id,
+        name: `${type.charAt(0).toUpperCase() + type.slice(1)} Connection`,
+        type,
+        status: 'pending',
+        last_sync: new Date().toISOString(),
+        accounts: []
+      })
+      .select()
+      .single();
+
+    if (createError) {
+      return NextResponse.json({ error: 'Failed to create connection' }, { status: 500 });
     }
-    
-    // Create a new connection
-    const newConnection: DataConnection = {
-      id: `conn-${Date.now()}`,
-      name: body.name,
-      provider: body.provider,
-      status: 'inactive',
-      dataSources: body.dataSources || [],
-    };
-    
-    // In a real implementation, you would store this in a database
-    // For now, we'll just return the new connection
-    
-    return NextResponse.json({ connection: newConnection });
+
+    return NextResponse.json(connection);
   } catch (error) {
-    console.error('Error in data connections POST route:', error);
-    return NextResponse.json(
-      { error: 'Failed to create data connection' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 } 

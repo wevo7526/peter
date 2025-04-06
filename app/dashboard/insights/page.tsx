@@ -12,22 +12,33 @@ import {
   ScaleIcon,
   SparklesIcon,
 } from '@heroicons/react/24/outline';
-import { MarketDataService } from '@/app/services/marketData';
 
-interface PortfolioPosition {
+interface MarketInsight {
   symbol: string;
-  quantity: number;
-  averagePrice: number;
-  currentPrice: number;
-  marketValue: number;
-  unrealizedPnL: number;
-  realizedPnL: number;
+  type: 'technical' | 'fundamental' | 'sentiment';
+  title: string;
+  description: string;
+  confidence: number;
+  timestamp: string;
+  indicators?: {
+    name: string;
+    value: number;
+    signal: 'buy' | 'sell' | 'neutral';
+  }[];
 }
 
 interface PortfolioMetrics {
   totalValue: number;
   dailyPnL: number;
-  positions: PortfolioPosition[];
+  positions: {
+    symbol: string;
+    quantity: number;
+    averagePrice: number;
+    currentPrice: number;
+    marketValue: number;
+    unrealizedPnL: number;
+    realizedPnL: number;
+  }[];
   assetAllocation: {
     asset: string;
     percentage: number;
@@ -37,16 +48,9 @@ interface PortfolioMetrics {
     alpha: number;
     sharpeRatio: number;
     volatility: number;
+    maxDrawdown: number;
+    correlation: number;
   };
-}
-
-interface MarketInsight {
-  symbol: string;
-  type: 'technical' | 'fundamental' | 'sentiment';
-  title: string;
-  description: string;
-  confidence: number;
-  timestamp: string;
 }
 
 interface MarketTrend {
@@ -62,55 +66,73 @@ interface MarketTrend {
   }>;
 }
 
-export default function DashboardPage() {
+interface TechnicalIndicator {
+  name: string;
+  value: number;
+  signal: 'buy' | 'sell' | 'neutral';
+  timestamp: string;
+}
+
+interface MarketSentiment {
+  symbol: string;
+  sentiment: 'positive' | 'negative' | 'neutral';
+  confidence: number;
+  sources: number;
+  timestamp: string;
+}
+
+export default function InsightsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [portfolioMetrics, setPortfolioMetrics] = useState<PortfolioMetrics | null>(null);
   const [marketInsights, setMarketInsights] = useState<MarketInsight[]>([]);
   const [marketTrends, setMarketTrends] = useState<MarketTrend[]>([]);
+  const [technicalIndicators, setTechnicalIndicators] = useState<TechnicalIndicator[]>([]);
+  const [marketSentiment, setMarketSentiment] = useState<MarketSentiment[]>([]);
   const [selectedTimeframe, setSelectedTimeframe] = useState<'1D' | '1W' | '1M' | '3M' | '1Y'>('1D');
   const [selectedSymbols, setSelectedSymbols] = useState<string[]>(['AAPL', 'MSFT', 'GOOGL']);
-  const marketDataService = new MarketDataService();
 
   useEffect(() => {
-    fetchDashboardData();
-    // Set up WebSocket connection for real-time updates
-    marketDataService.connectToMarketData(selectedSymbols);
-    return () => {
-      marketDataService.disconnect();
-    };
+    fetchInsights();
   }, [selectedTimeframe, selectedSymbols]);
 
-  const fetchDashboardData = async () => {
+  const fetchInsights = async () => {
     try {
       setLoading(true);
       const [
         portfolioResponse,
         insightsResponse,
         trendsResponse,
+        indicatorsResponse,
+        sentimentResponse,
       ] = await Promise.all([
         fetch(`/api/market-data?type=portfolio&symbols=${selectedSymbols.join(',')}`),
         fetch(`/api/market-data?type=market-insights&symbols=${selectedSymbols.join(',')}`),
         fetch('/api/market-data?type=market-trends'),
+        fetch(`/api/market-data?type=technical-indicators&symbols=${selectedSymbols.join(',')}`),
+        fetch(`/api/market-data?type=market-sentiment&symbols=${selectedSymbols.join(',')}`),
       ]);
 
-      if (!portfolioResponse.ok || !insightsResponse.ok || !trendsResponse.ok) {
-        throw new Error('Failed to fetch dashboard data');
+      if (!portfolioResponse.ok || !insightsResponse.ok || !trendsResponse.ok || 
+          !indicatorsResponse.ok || !sentimentResponse.ok) {
+        throw new Error('Failed to fetch market data');
       }
 
-      const [portfolioData, insightsData, trendsData] = await Promise.all([
+      const [portfolioData, insightsData, trendsData, indicatorsData, sentimentData] = await Promise.all([
         portfolioResponse.json(),
         insightsResponse.json(),
         trendsResponse.json(),
+        indicatorsResponse.json(),
+        sentimentResponse.json(),
       ]);
 
       setPortfolioMetrics(portfolioData);
-      setMarketInsights(Array.isArray(insightsData) ? insightsData : []);
-      setMarketTrends(Array.isArray(trendsData) ? trendsData : []);
+      setMarketInsights(insightsData);
+      setMarketTrends(trendsData);
+      setTechnicalIndicators(indicatorsData.flat());
+      setMarketSentiment(sentimentData);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
-      setMarketInsights([]);
-      setMarketTrends([]);
     } finally {
       setLoading(false);
     }
@@ -135,7 +157,7 @@ export default function DashboardPage() {
   return (
     <div className="p-6">
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">Dashboard</h1>
+        <h1 className="text-2xl font-bold">Market Insights</h1>
         <div className="flex gap-2">
           {['1D', '1W', '1M', '3M', '1Y'].map((timeframe) => (
             <button
@@ -202,20 +224,18 @@ export default function DashboardPage() {
             <h3 className="text-lg font-semibold">Market Sentiment</h3>
           </div>
           <div className="mt-2">
-            {Array.isArray(marketInsights) && marketInsights
-              .filter(insight => insight.type === 'sentiment')
-              .map((insight) => (
-                <div key={insight.symbol} className="flex justify-between items-center">
-                  <span className="text-sm">{insight.symbol}</span>
-                  <span className={`text-sm ${
-                    insight.title.toLowerCase().includes('positive') ? 'text-green-500' :
-                    insight.title.toLowerCase().includes('negative') ? 'text-red-500' :
-                    'text-gray-500'
-                  }`}>
-                    {insight.title}
-                  </span>
-                </div>
-              ))}
+            {marketSentiment.map((sentiment) => (
+              <div key={sentiment.symbol} className="flex justify-between items-center">
+                <span className="text-sm">{sentiment.symbol}</span>
+                <span className={`text-sm ${
+                  sentiment.sentiment === 'positive' ? 'text-green-500' :
+                  sentiment.sentiment === 'negative' ? 'text-red-500' :
+                  'text-gray-500'
+                }`}>
+                  {sentiment.sentiment}
+                </span>
+              </div>
+            ))}
           </div>
         </div>
       </div>
@@ -223,32 +243,21 @@ export default function DashboardPage() {
       {/* Market Insights and Trends */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-white p-6 rounded-lg shadow">
-          <h2 className="text-xl font-semibold mb-4">Market Insights</h2>
+          <h2 className="text-xl font-semibold mb-4">Technical Analysis</h2>
           <div className="space-y-4">
-            {Array.isArray(marketInsights) && marketInsights.map((insight, index) => (
+            {technicalIndicators.map((indicator, index) => (
               <div key={index} className="border-b pb-4 last:border-b-0">
                 <div className="flex items-center justify-between">
-                  <h3 className="font-medium">{insight.title}</h3>
+                  <h3 className="font-medium">{indicator.name}</h3>
                   <span className={`px-2 py-1 rounded text-sm ${
-                    insight.type === 'technical' ? 'bg-blue-100 text-blue-800' :
-                    insight.type === 'fundamental' ? 'bg-green-100 text-green-800' :
-                    'bg-purple-100 text-purple-800'
+                    indicator.signal === 'buy' ? 'bg-green-100 text-green-800' :
+                    indicator.signal === 'sell' ? 'bg-red-100 text-red-800' :
+                    'bg-gray-100 text-gray-800'
                   }`}>
-                    {insight.type}
+                    {indicator.signal.toUpperCase()}
                   </span>
                 </div>
-                <p className="text-gray-600 mt-2">{insight.description}</p>
-                <div className="flex items-center mt-2">
-                  <div className="w-full bg-gray-200 rounded-full h-2">
-                    <div
-                      className="bg-blue-600 h-2 rounded-full"
-                      style={{ width: `${insight.confidence * 100}%` }}
-                    ></div>
-                  </div>
-                  <span className="ml-2 text-sm text-gray-500">
-                    {Math.round(insight.confidence * 100)}% confidence
-                  </span>
-                </div>
+                <p className="text-sm text-gray-600 mt-2">Value: {indicator.value.toFixed(2)}</p>
               </div>
             ))}
           </div>

@@ -43,10 +43,10 @@ export default function Sidebar() {
   const navigation = [
     { name: 'Overview', href: '/dashboard', icon: ChartBarIcon },
     { name: 'Create', href: '/dashboard/create', icon: SparklesIcon },
-    { name: 'Data', href: '/dashboard/data', icon: CircleStackIcon },
+    { name: 'Insights', href: '/dashboard/insights', icon: CircleStackIcon },
     { name: 'Research', href: '/dashboard/research', icon: MagnifyingGlassIcon },
     { name: 'Thesis', href: '/dashboard/thesis', icon: DocumentTextIcon },
-    { name: 'Planning', href: '/dashboard/planning', icon: FlagIcon },
+    { name: 'Portfolios', href: '/dashboard/portfolios', icon: FlagIcon },
   ];
 
   return (
