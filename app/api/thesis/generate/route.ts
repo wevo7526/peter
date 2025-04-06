@@ -1,30 +1,35 @@
 import { NextResponse } from 'next/server';
-import { createServerClient, type CookieOptions } from '@supabase/ssr';
+import { createClient } from '@supabase/supabase-js';
 import { generateInvestmentThesis } from '@/app/services/thesisAgent';
 
 export async function POST(request: Request) {
   try {
-    const supabase = createServerClient(
+    // Get the authorization header
+    const authHeader = request.headers.get('Authorization');
+    if (!authHeader) {
+      return NextResponse.json({ error: 'No authorization header' }, { status: 401 });
+    }
+
+    // Extract the token
+    const token = authHeader.replace('Bearer ', '');
+    
+    // Create Supabase client with the token
+    const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
       {
-        cookies: {
-          get(name: string) {
-            return request.headers.get('cookie')?.split('; ').find(c => c.startsWith(`${name}=`))?.split('=')[1];
-          },
-          set(name: string, value: string, options: CookieOptions) {
-            // Server-side cookies are handled by the middleware
-          },
-          remove(name: string, options: CookieOptions) {
-            // Server-side cookies are handled by the middleware
-          },
-        },
+        global: {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        }
       }
     );
 
-    const { data: { session } } = await supabase.auth.getSession();
-
-    if (!session?.user) {
+    // Verify the user
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError || !user) {
+      console.error('Auth error:', userError);
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
