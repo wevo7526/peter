@@ -170,7 +170,7 @@ export default function PlanningPage() {
         <div className="bg-white rounded-lg shadow-sm p-6">
           <h2 className="text-lg font-semibold mb-4">Add New Goal</h2>
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
+                <div>
               <label htmlFor="title" className="block text-sm font-medium text-gray-700">
                 Goal Title
               </label>
@@ -182,9 +182,9 @@ export default function PlanningPage() {
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 sm:text-sm"
                 required
               />
-            </div>
+                </div>
 
-            <div>
+                <div>
               <label htmlFor="targetAmount" className="block text-sm font-medium text-gray-700">
                 Target Amount
               </label>
@@ -230,54 +230,54 @@ export default function PlanningPage() {
               <label htmlFor="targetDate" className="block text-sm font-medium text-gray-700">
                 Target Date
               </label>
-              <input
-                type="date"
+                    <input
+                      type="date"
                 id="targetDate"
                 value={newGoal.targetDate}
                 onChange={(e) => setNewGoal({ ...newGoal, targetDate: e.target.value })}
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 sm:text-sm"
-                required
-              />
-            </div>
+                      required
+                    />
+                  </div>
 
             <div>
               <label htmlFor="category" className="block text-sm font-medium text-gray-700">
                 Category
               </label>
-              <select
+                    <select
                 id="category"
                 value={newGoal.category}
                 onChange={(e) => setNewGoal({ ...newGoal, category: e.target.value })}
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 sm:text-sm"
-                required
-              >
-                <option value="">Select a category</option>
-                <option value="retirement">Retirement</option>
+                      required
+                    >
+                      <option value="">Select a category</option>
+                      <option value="retirement">Retirement</option>
                 <option value="emergency">Emergency Fund</option>
                 <option value="debt">Debt Repayment</option>
                 <option value="investment">Investment</option>
-                <option value="education">Education</option>
+                      <option value="education">Education</option>
                 <option value="home">Home Purchase</option>
-                <option value="other">Other</option>
-              </select>
-            </div>
+                      <option value="other">Other</option>
+                    </select>
+                  </div>
 
             <div>
               <label htmlFor="priority" className="block text-sm font-medium text-gray-700">
                 Priority
               </label>
-              <select
+                    <select
                 id="priority"
                 value={newGoal.priority}
                 onChange={(e) => setNewGoal({ ...newGoal, priority: e.target.value as 'high' | 'medium' | 'low' })}
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 sm:text-sm"
                 required
-              >
-                <option value="high">High</option>
-                <option value="medium">Medium</option>
-                <option value="low">Low</option>
-              </select>
-            </div>
+                    >
+                      <option value="high">High</option>
+                      <option value="medium">Medium</option>
+                      <option value="low">Low</option>
+                    </select>
+                  </div>
 
             <button
               type="submit"
@@ -287,7 +287,7 @@ export default function PlanningPage() {
               {saving ? 'Saving...' : 'Add Goal'}
             </button>
           </form>
-        </div>
+                  </div>
 
         {/* Goals List */}
         <div className="bg-white rounded-lg shadow-sm p-6">
@@ -333,7 +333,7 @@ export default function PlanningPage() {
                 </div>
                 <div className="mt-2 text-sm text-gray-500">
                   Target Date: {format(new Date(goal.targetDate), 'MMM d, yyyy')}
-                </div>
+                  </div>
                 <div className="mt-1">
                   <span
                     className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
@@ -346,7 +346,7 @@ export default function PlanningPage() {
                   >
                     {goal.priority.charAt(0).toUpperCase() + goal.priority.slice(1)} Priority
                   </span>
-                </div>
+                  </div>
               </div>
             ))}
             {goals.length === 0 && (
