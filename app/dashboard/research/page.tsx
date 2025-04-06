@@ -1,63 +1,87 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import Image from 'next/image';
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { createBrowserClient } from '@supabase/ssr';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Loader2, Search, TrendingUp, Activity, BarChart2, AlertTriangle } from 'lucide-react';
 
-// Define interfaces
-interface SavedQuery {
-  id: string;
-  query: string;
+interface MarketData {
+  symbol: string;
+  price: number;
+  volume: number;
+  timestamp: string;
+  change: number;
+  changePercent: number;
+}
+
+interface TechnicalIndicator {
+  name: string;
+  value: number;
+  signal: 'buy' | 'sell' | 'neutral';
   timestamp: string;
 }
 
-interface ResearchResult {
-  id: string;
-  query: string;
+interface MarketSentiment {
+  symbol: string;
+  sentiment: 'positive' | 'negative' | 'neutral';
+  confidence: number;
+  sources: number;
   timestamp: string;
-  insights: string[];
-  dataSources: string[];
-  sentiment: 'positive' | 'neutral' | 'negative';
+}
+
+interface SectorPerformance {
+  sector: string;
+  performance: number;
+  topStocks: Array<{
+    symbol: string;
+    performance: number;
+  }>;
+  bottomStocks: Array<{
+    symbol: string;
+    performance: number;
+  }>;
+}
+
+interface RiskMetrics {
+  beta: number;
+  alpha: number;
+  sharpeRatio: number;
+  volatility: number;
+  maxDrawdown: number;
+  correlation: number;
+}
+
+interface ResearchResponse {
+  response: string;
+  marketData: MarketData[];
+  technicalIndicators: TechnicalIndicator[];
+  sentiment: MarketSentiment[];
+  sectorPerformance: SectorPerformance[];
+  riskMetrics: RiskMetrics | null;
+  marketInsights: any;
 }
 
 export default function ResearchPage() {
   const [query, setQuery] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [savedQueries, setSavedQueries] = useState<SavedQuery[]>([]);
-  const [recentResults, setRecentResults] = useState<ResearchResult[]>([]);
-  const [currentResult, setCurrentResult] = useState<ResearchResult | null>(null);
+  const [research, setResearch] = useState<ResearchResponse | null>(null);
+  const router = useRouter();
+  const supabase = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
 
-  // Fetch saved queries and recent results on component mount
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const response = await fetch('/api/research');
-        if (!response.ok) {
-          throw new Error('Failed to fetch research data');
-        }
-        const data = await response.json();
-        setSavedQueries(data.savedQueries);
-        setRecentResults(data.recentResults);
-      } catch (err) {
-        console.error('Error fetching research data:', err);
-        setError('Failed to load saved queries and recent results');
-      }
-    };
-
-    fetchData();
-  }, []);
-
-  // Handle form submission
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!query.trim()) return;
-
-    setIsLoading(true);
+    setLoading(true);
     setError(null);
 
     try {
-      // Analyze the query
-      const analyzeResponse = await fetch('/api/research/analyze', {
+      const response = await fetch('/api/research', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -65,233 +89,197 @@ export default function ResearchPage() {
         body: JSON.stringify({ query }),
       });
 
-      if (!analyzeResponse.ok) {
-        throw new Error('Failed to analyze query');
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to get research');
       }
 
-      const { result } = await analyzeResponse.json();
-      setCurrentResult(result);
-      setRecentResults((prev) => [result, ...prev]);
-
-      // Save the query
-      const saveResponse = await fetch('/api/research', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ query }),
-      });
-
-      if (!saveResponse.ok) {
-        throw new Error('Failed to save query');
-      }
-
-      const { query: savedQuery } = await saveResponse.json();
-      setSavedQueries((prev) => [savedQuery, ...prev]);
-      setQuery('');
+      const data = await response.json();
+      setResearch(data);
     } catch (err) {
-      console.error('Error in research submission:', err);
-      setError('Failed to process your research query');
+      setError(err instanceof Error ? err.message : 'An error occurred');
     } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Handle clicking on a saved query
-  const handleSavedQueryClick = (savedQuery: SavedQuery) => {
-    setQuery(savedQuery.query);
-  };
-
-  // Format timestamp to readable date
-  const formatDate = (timestamp: string) => {
-    const date = new Date(timestamp);
-    return date.toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
-
-  // Get sentiment color
-  const getSentimentColor = (sentiment: string) => {
-    switch (sentiment) {
-      case 'positive':
-        return 'bg-green-100 text-green-800';
-      case 'negative':
-        return 'bg-red-100 text-red-800';
-      default:
-        return 'bg-gray-100 text-gray-800';
+      setLoading(false);
     }
   };
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <h1 className="text-3xl font-bold mb-8">Financial Research</h1>
-      
-      {/* Research Form */}
-      <div className="bg-white rounded-lg shadow-md p-6 mb-8">
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label htmlFor="query" className="block text-sm font-medium text-gray-700 mb-2">
-              Research Query
-            </label>
-            <textarea
-              id="query"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Enter your research query (e.g., 'Analyze tech sector performance', 'Research Microsoft stock')"
-              className="w-full h-32 p-3 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-              disabled={isLoading}
-            />
-          </div>
-          
-          <div className="flex justify-end space-x-4">
-            <button
-              type="submit"
-              disabled={isLoading || !query.trim()}
-              className={`px-4 py-2 rounded-md text-white font-medium ${
-                isLoading || !query.trim()
-                  ? 'bg-gray-400 cursor-not-allowed'
-                  : 'bg-blue-600 hover:bg-blue-700'
-              }`}
-            >
-              {isLoading ? 'Analyzing...' : 'Analyze'}
-            </button>
-          </div>
-        </form>
-        
-        {error && (
-          <div className="mt-4 p-4 bg-red-100 text-red-800 rounded-md">
-            {error}
-          </div>
-        )}
+    <div className="container mx-auto p-6 space-y-6">
+      <div className="flex justify-between items-center">
+        <h1 className="text-3xl font-bold">Market Research</h1>
+        <Button variant="outline" onClick={() => router.push('/dashboard')}>
+          Back to Dashboard
+        </Button>
       </div>
-      
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Saved Queries */}
-        <div className="bg-white rounded-lg shadow-md p-6">
-          <h2 className="text-xl font-semibold mb-4">Saved Queries</h2>
-          {savedQueries.length === 0 ? (
-            <p className="text-gray-500">No saved queries yet</p>
+
+      <form onSubmit={handleSubmit} className="flex gap-4">
+        <Input
+          placeholder="Enter your research query (e.g., 'Analyze AAPL and MSFT performance')"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          className="flex-1"
+        />
+        <Button type="submit" disabled={loading}>
+          {loading ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Analyzing...
+            </>
           ) : (
-            <ul className="space-y-3">
-              {savedQueries.map((savedQuery) => (
-                <li key={savedQuery.id}>
-                  <button
-                    onClick={() => handleSavedQueryClick(savedQuery)}
-                    className="w-full text-left p-3 rounded-md hover:bg-gray-100 transition-colors"
-                  >
-                    <p className="font-medium">{savedQuery.query}</p>
-                    <p className="text-sm text-gray-500">{formatDate(savedQuery.timestamp)}</p>
-                  </button>
-                </li>
-              ))}
-            </ul>
+            <>
+              <Search className="mr-2 h-4 w-4" />
+              Research
+            </>
           )}
+        </Button>
+      </form>
+
+      {error && (
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
+          {error}
         </div>
-        
-        {/* Current Result */}
-        {currentResult && (
-          <div className="lg:col-span-2 bg-white rounded-lg shadow-md p-6">
-            <h2 className="text-xl font-semibold mb-4">Research Result</h2>
-            <div className="mb-4">
-              <p className="font-medium">{currentResult.query}</p>
-              <p className="text-sm text-gray-500">{formatDate(currentResult.timestamp)}</p>
-            </div>
-            
-            <div className="mb-4">
-              <h3 className="text-lg font-medium mb-2">Insights</h3>
-              <ul className="space-y-2">
-                {currentResult.insights.map((insight, index) => (
-                  <li key={index} className="p-3 bg-gray-50 rounded-md">
-                    {insight}
-                  </li>
-                ))}
-              </ul>
-            </div>
-            
-            <div className="mb-4">
-              <h3 className="text-lg font-medium mb-2">Data Sources</h3>
-              <div className="flex flex-wrap gap-2">
-                {currentResult.dataSources.map((source, index) => (
-                  <span
-                    key={index}
-                    className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm"
-                  >
-                    {source}
-                  </span>
-                ))}
-              </div>
-            </div>
-            
-            <div>
-              <h3 className="text-lg font-medium mb-2">Sentiment</h3>
-              <span
-                className={`px-3 py-1 rounded-full text-sm ${getSentimentColor(
-                  currentResult.sentiment
-                )}`}
-              >
-                {currentResult.sentiment.charAt(0).toUpperCase() + currentResult.sentiment.slice(1)}
-              </span>
-            </div>
-          </div>
-        )}
-        
-        {/* Recent Results */}
-        {!currentResult && recentResults.length > 0 && (
-          <div className="lg:col-span-2 bg-white rounded-lg shadow-md p-6">
-            <h2 className="text-xl font-semibold mb-4">Recent Results</h2>
-            <div className="space-y-6">
-              {recentResults.map((result) => (
-                <div key={result.id} className="border-b border-gray-200 pb-6 last:border-0">
-                  <div className="mb-4">
-                    <p className="font-medium">{result.query}</p>
-                    <p className="text-sm text-gray-500">{formatDate(result.timestamp)}</p>
-                  </div>
-                  
-                  <div className="mb-4">
-                    <h3 className="text-lg font-medium mb-2">Insights</h3>
-                    <ul className="space-y-2">
-                      {result.insights.map((insight, index) => (
-                        <li key={index} className="p-3 bg-gray-50 rounded-md">
-                          {insight}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                  
-                  <div className="mb-4">
-                    <h3 className="text-lg font-medium mb-2">Data Sources</h3>
-                    <div className="flex flex-wrap gap-2">
-                      {result.dataSources.map((source, index) => (
-                        <span
-                          key={index}
-                          className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm"
-                        >
-                          {source}
-                        </span>
-                      ))}
+      )}
+
+      {research && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Market Data */}
+          {research.marketData.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <TrendingUp className="h-5 w-5" />
+                  Market Data
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {research.marketData.map((data) => (
+                    <div key={data.symbol} className="flex justify-between items-center">
+                      <span className="font-medium">{data.symbol}</span>
+                      <div className="text-right">
+                        <div className="font-semibold">${data.price.toFixed(2)}</div>
+                        <div className={`text-sm ${data.changePercent >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                          {data.changePercent >= 0 ? '+' : ''}{data.changePercent.toFixed(2)}%
+                        </div>
+                      </div>
                     </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Technical Indicators */}
+          {research.technicalIndicators.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Activity className="h-5 w-5" />
+                  Technical Indicators
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {research.technicalIndicators.map((indicator) => (
+                    <div key={indicator.name} className="flex justify-between items-center">
+                      <span className="font-medium">{indicator.name}</span>
+                      <div className="text-right">
+                        <div className="font-semibold">{indicator.value.toFixed(2)}</div>
+                        <div className={`text-sm ${
+                          indicator.signal === 'buy' ? 'text-green-600' :
+                          indicator.signal === 'sell' ? 'text-red-600' :
+                          'text-yellow-600'
+                        }`}>
+                          {indicator.signal.toUpperCase()}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Market Sentiment */}
+          {research.sentiment.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <BarChart2 className="h-5 w-5" />
+                  Market Sentiment
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {research.sentiment.map((s) => (
+                    <div key={s.symbol} className="flex justify-between items-center">
+                      <span className="font-medium">{s.symbol}</span>
+                      <div className="text-right">
+                        <div className={`font-semibold ${
+                          s.sentiment === 'positive' ? 'text-green-600' :
+                          s.sentiment === 'negative' ? 'text-red-600' :
+                          'text-yellow-600'
+                        }`}>
+                          {s.sentiment.toUpperCase()}
+                        </div>
+                        <div className="text-sm text-gray-600">
+                          Confidence: {(s.confidence * 100).toFixed(1)}%
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Risk Metrics */}
+          {research.riskMetrics && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <AlertTriangle className="h-5 w-5" />
+                  Risk Metrics
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div className="flex justify-between">
+                    <span className="font-medium">Beta</span>
+                    <span className="font-semibold">{research.riskMetrics.beta.toFixed(2)}</span>
                   </div>
-                  
-                  <div>
-                    <h3 className="text-lg font-medium mb-2">Sentiment</h3>
-                    <span
-                      className={`px-3 py-1 rounded-full text-sm ${getSentimentColor(
-                        result.sentiment
-                      )}`}
-                    >
-                      {result.sentiment.charAt(0).toUpperCase() + result.sentiment.slice(1)}
-                    </span>
+                  <div className="flex justify-between">
+                    <span className="font-medium">Alpha</span>
+                    <span className="font-semibold">{research.riskMetrics.alpha.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="font-medium">Sharpe Ratio</span>
+                    <span className="font-semibold">{research.riskMetrics.sharpeRatio.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="font-medium">Volatility</span>
+                    <span className="font-semibold">{research.riskMetrics.volatility.toFixed(2)}%</span>
                   </div>
                 </div>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* AI Analysis */}
+          <Card className="md:col-span-2">
+            <CardHeader>
+              <CardTitle>AI Analysis</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="prose max-w-none">
+                {research.response.split('\n').map((paragraph, index) => (
+                  <p key={index}>{paragraph}</p>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
     </div>
   );
 } 

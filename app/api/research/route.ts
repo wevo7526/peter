@@ -4,6 +4,7 @@ import { cookies } from 'next/headers';
 import { v4 as uuidv4 } from 'uuid';
 import { CookieOptions } from '@supabase/ssr';
 import { RequestCookies } from 'next/dist/server/web/spec-extension/cookies';
+import { MarketDataService } from '@/app/services/marketData';
 
 // Define interfaces
 interface SavedQuery {
@@ -85,20 +86,21 @@ async function getAIInteractions(userId: string): Promise<any[]> {
 
 export async function GET(request: Request) {
   try {
-    const cookieStore = cookies();
+    const cookieStore = await cookies();
     const supabase = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
       {
         cookies: {
           get(name: string) {
-            return cookieStore.get(name)?.value;
+            const cookie = cookieStore.get(name);
+            return cookie?.value;
           },
-          set(name: string, value: string, options: any) {
-            cookieStore.set({ name, value, ...options });
+          set(name: string, value: string, options: CookieOptions) {
+            cookieStore.set(name, value, options);
           },
-          remove(name: string, options: any) {
-            cookieStore.set({ name, value: '', ...options });
+          remove(name: string, options: CookieOptions) {
+            cookieStore.delete(name);
           },
         },
       }
@@ -151,106 +153,161 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const cookieStore = cookies();
+    const cookieStore = await cookies();
     const supabase = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
       {
         cookies: {
           get(name: string) {
-            return cookieStore.get(name)?.value;
+            const cookie = cookieStore.get(name);
+            return cookie?.value;
           },
           set(name: string, value: string, options: CookieOptions) {
-            cookieStore.set({ name, value, ...options });
+            cookieStore.set(name, value, options);
           },
           remove(name: string, options: CookieOptions) {
-            cookieStore.set({ name, value: '', ...options });
+            cookieStore.delete(name);
           },
         },
       }
     );
 
     const { data: { session } } = await supabase.auth.getSession();
+
     if (!session) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { query, portfolioId } = await request.json();
+    const { query } = await request.json();
     if (!query) {
-      return NextResponse.json(
-        { error: 'Query is required' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'Query is required' }, { status: 400 });
     }
 
-    const researchId = uuidv4();
-    const userId = session.user.id;
+    const marketDataService = new MarketDataService();
+    
+    // Extract potential stock symbols from the query
+    const symbolRegex = /\b[A-Z]{1,5}\b/g;
+    const symbols = query.match(symbolRegex) || [];
+    
+    // Get market data for the symbols
+    const marketData = symbols.length > 0 
+      ? await marketDataService.getRealTimeData(symbols)
+      : [];
 
-    // Store research request in database
-    const { error: dbError } = await supabase
-      .from('research_requests')
-      .insert({
-        id: researchId,
-        user_id: userId,
-        portfolio_id: portfolioId,
-        query,
-        status: 'pending',
-        created_at: new Date().toISOString(),
-      });
+    // Get technical indicators for the first symbol if available
+    const technicalIndicators = symbols.length > 0
+      ? await marketDataService.getTechnicalIndicators(symbols[0])
+      : [];
 
-    if (dbError) {
-      console.error('Database error:', dbError);
-      return NextResponse.json(
-        { error: 'Failed to store research request' },
-        { status: 500 }
-      );
+    // Get market sentiment
+    const sentiment = symbols.length > 0
+      ? await marketDataService.getMarketSentiment(symbols)
+      : [];
+
+    // Get sector performance
+    const sectorPerformance = await marketDataService.getSectorPerformance();
+
+    // Get risk metrics if we have symbols
+    const riskMetrics = symbols.length > 0
+      ? await marketDataService.calculateRiskMetrics(symbols)
+      : null;
+
+    // Get market insights
+    const marketInsights = symbols.length > 0
+      ? await marketDataService.getMarketInsights(symbols)
+      : null;
+
+    // Construct the prompt with market data context
+    const marketContext = marketData.length > 0
+      ? `\nCurrent Market Data:\n${marketData.map(d => 
+          `${d.symbol}: $${d.price} (${d.changePercent > 0 ? '+' : ''}${d.changePercent}%)`
+        ).join('\n')}`
+      : '';
+
+    const technicalContext = technicalIndicators.length > 0
+      ? `\nTechnical Indicators:\n${technicalIndicators.map(i => 
+          `${i.name}: ${i.value} (Signal: ${i.signal})`
+        ).join('\n')}`
+      : '';
+
+    const sentimentContext = sentiment.length > 0
+      ? `\nMarket Sentiment:\n${sentiment.map(s => 
+          `${s.symbol}: ${s.sentiment} (Confidence: ${(s.confidence * 100).toFixed(1)}%)`
+        ).join('\n')}`
+      : '';
+
+    const sectorContext = sectorPerformance.length > 0
+      ? `\nSector Performance:\n${sectorPerformance.map(s => 
+          `${s.sector}: ${s.performance > 0 ? '+' : ''}${s.performance}%`
+        ).join('\n')}`
+      : '';
+
+    const riskContext = riskMetrics
+      ? `\nRisk Metrics:\nBeta: ${riskMetrics.beta.toFixed(2)}\nAlpha: ${riskMetrics.alpha.toFixed(2)}\nSharpe Ratio: ${riskMetrics.sharpeRatio.toFixed(2)}\nVolatility: ${riskMetrics.volatility.toFixed(2)}%`
+      : '';
+
+    const prompt = `As a financial research assistant, analyze the following query and provide insights based on the available market data:
+
+Query: ${query}
+${marketContext}
+${technicalContext}
+${sentimentContext}
+${sectorContext}
+${riskContext}
+
+Please provide:
+1. A concise summary of the current market situation
+2. Key technical indicators and their implications
+3. Market sentiment analysis
+4. Risk assessment
+5. Actionable insights and recommendations
+
+Focus on providing clear, data-driven insights that would be valuable for investment decisions.`;
+
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: 'gpt-4-turbo-preview',
+        messages: [
+          {
+            role: 'system',
+            content: 'You are a professional financial research assistant with expertise in market analysis, technical analysis, and risk management. Provide clear, concise, and actionable insights based on available market data.'
+          },
+          {
+            role: 'user',
+            content: prompt
+          }
+        ],
+        temperature: 0.7,
+        max_tokens: 1000,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to get AI response');
     }
 
-    // Start research process
-    // TODO: Implement research generation logic
-    const research = {
-      id: researchId,
-      query,
-      findings: [
-        'Market analysis shows strong growth potential',
-        'Competitive landscape is evolving rapidly',
-        'Regulatory environment is favorable',
-      ],
-      recommendations: [
-        'Consider increasing exposure to growth sectors',
-        'Monitor regulatory changes closely',
-        'Diversify across multiple subsectors',
-      ],
-      createdAt: new Date().toISOString(),
-    };
+    const data = await response.json();
+    const aiResponse = data.choices[0].message.content;
 
-    // Update research status in database
-    const { error: updateError } = await supabase
-      .from('research_requests')
-      .update({
-        status: 'completed',
-        findings: research.findings,
-        recommendations: research.recommendations,
-        completed_at: new Date().toISOString(),
-      })
-      .eq('id', researchId);
-
-    if (updateError) {
-      console.error('Update error:', updateError);
-      return NextResponse.json(
-        { error: 'Failed to update research status' },
-        { status: 500 }
-      );
-    }
-
-    return NextResponse.json(research);
+    return NextResponse.json({
+      response: aiResponse,
+      marketData,
+      technicalIndicators,
+      sentiment,
+      sectorPerformance,
+      riskMetrics,
+      marketInsights,
+    });
   } catch (error) {
-    console.error('Research error:', error);
+    console.error('Research API error:', error);
     return NextResponse.json(
-      { error: 'Failed to generate research' },
+      { error: 'Failed to process research request' },
       { status: 500 }
     );
   }

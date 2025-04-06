@@ -86,20 +86,77 @@ interface PolygonQuote {
   timestamp: number;
 }
 
+interface CacheEntry<T> {
+  data: T;
+  timestamp: number;
+}
+
 export class MarketDataService {
   private polygon: PolygonConfig;
   public supabase: any;
   private ws: WebSocket | null = null;
+  private cache: Map<string, CacheEntry<any>> = new Map();
+  private readonly CACHE_DURATION = 5 * 60 * 1000; // 5 minutes in milliseconds
 
   constructor() {
     this.polygon = {
-      apiKey: process.env.POLYGON_API_KEY!,
-      baseUrl: 'https://api.polygon.io/v2',
+      apiKey: process.env.NEXT_PUBLIC_POLYGON_API_KEY || '',
+      baseUrl: 'https://api.polygon.io',
     };
     this.supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
     );
+  }
+
+  private isCacheValid(key: string): boolean {
+    const entry = this.cache.get(key);
+    if (!entry) return false;
+    return Date.now() - entry.timestamp < this.CACHE_DURATION;
+  }
+
+  private getCachedData<T>(key: string): T | null {
+    const entry = this.cache.get(key);
+    if (entry && this.isCacheValid(key)) {
+      return entry.data;
+    }
+    return null;
+  }
+
+  private setCachedData<T>(key: string, data: T): void {
+    this.cache.set(key, {
+      data,
+      timestamp: Date.now(),
+    });
+  }
+
+  private async fetchWithRetry(url: string, retries = 3): Promise<any> {
+    for (let i = 0; i < retries; i++) {
+      try {
+        const response = await fetch(url);
+        if (!response.ok) {
+          if (response.status === 401) {
+            console.error('API key is invalid or missing');
+            return null;
+          }
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const text = await response.text();
+        try {
+          return JSON.parse(text);
+        } catch (e) {
+          console.error('Failed to parse JSON response:', text);
+          return null;
+        }
+      } catch (error) {
+        if (i === retries - 1) {
+          console.error('Max retries reached:', error);
+          return null;
+        }
+        await new Promise(resolve => setTimeout(resolve, 1000 * (i + 1)));
+      }
+    }
+    return null;
   }
 
   async connectToMarketData(symbols: string[]) {
@@ -177,83 +234,83 @@ export class MarketDataService {
   }
 
   async getRealTimeData(symbols: string[]): Promise<MarketData[]> {
+    if (!Array.isArray(symbols)) {
+      console.error('Invalid symbols input:', symbols);
+      return [];
+    }
+
+    const cacheKey = `realtime_${symbols.join(',')}`;
+    const cachedData = this.getCachedData<MarketData[]>(cacheKey);
+    if (cachedData) return cachedData;
+
     try {
-      const response = await fetch(
+      const data = await this.fetchWithRetry(
         `${this.polygon.baseUrl}/v2/aggs/ticker/AAPL/range/1/day/2023-01-09/2023-01-09?apiKey=${this.polygon.apiKey}`
       );
-      const data = await response.json();
 
-      if (!data.results || !Array.isArray(data.results)) {
+      if (!data || !data.results || !Array.isArray(data.results)) {
         console.log('No results found in real-time data response');
-        // Return mock data for development
-        return symbols.map(symbol => ({
-          symbol,
-          price: Math.random() * 1000,
-          volume: Math.floor(Math.random() * 1000000),
-          timestamp: new Date().toISOString(),
-          change: Math.random() * 10 - 5,
-          changePercent: Math.random() * 2 - 1,
-        }));
+        return this.generateMockData(symbols);
       }
 
-      return data.results.map((result: any) => ({
-        symbol: result.symbol,
-        price: result.c,
-        volume: result.v,
-        timestamp: new Date(result.t).toISOString(),
+      const result = data.results.map((item: any) => ({
+        symbol: item.T,
+        price: item.c,
+        volume: item.v,
+        timestamp: item.t,
+        change: item.c - item.o,
+        changePercent: ((item.c - item.o) / item.o) * 100,
       }));
+
+      this.setCachedData(cacheKey, result);
+      return result;
     } catch (error) {
       console.error('Error fetching real-time data:', error);
-      // Return mock data on error
-      return symbols.map(symbol => ({
-        symbol,
-        price: Math.random() * 1000,
-        volume: Math.floor(Math.random() * 1000000),
-        timestamp: new Date().toISOString(),
-        change: Math.random() * 10 - 5,
-        changePercent: Math.random() * 2 - 1,
-      }));
+      return this.generateMockData(symbols);
     }
   }
 
-  async getHistoricalData(symbol: string, timeframe: string = '1D'): Promise<MarketData[]> {
+  async getHistoricalData(symbol: string): Promise<MarketData[]> {
+    const cacheKey = `historical_${symbol}`;
+    const cachedData = this.getCachedData<MarketData[]>(cacheKey);
+    if (cachedData) return cachedData;
+
     try {
-      const response = await fetch(
+      const data = await this.fetchWithRetry(
         `${this.polygon.baseUrl}/v2/aggs/ticker/${symbol}/range/1/day/2023-01-09/2023-01-09?apiKey=${this.polygon.apiKey}`
       );
-      const data = await response.json();
 
-      if (!data.results || !Array.isArray(data.results)) {
+      if (!data || !data.results || !Array.isArray(data.results)) {
         console.log(`No results found in historical data response for ${symbol}`);
-        // Return mock data for development
-        return Array(30).fill(null).map((_, i) => ({
-          symbol,
-          price: Math.random() * 1000,
-          volume: Math.floor(Math.random() * 1000000),
-          timestamp: new Date(Date.now() - i * 24 * 60 * 60 * 1000).toISOString(),
-          change: Math.random() * 10 - 5,
-          changePercent: Math.random() * 2 - 1,
-        }));
+        return this.generateMockData([symbol]);
       }
 
-      return data.results.map((result: any) => ({
-        symbol: result.symbol,
-        price: result.c,
-        volume: result.v,
-        timestamp: new Date(result.t).toISOString(),
-      }));
-    } catch (error) {
-      console.error(`Error fetching historical data for ${symbol}:`, error);
-      // Return mock data on error
-      return Array(30).fill(null).map((_, i) => ({
+      const historicalData = data.results.map((item: any) => ({
         symbol,
-        price: Math.random() * 1000,
-        volume: Math.floor(Math.random() * 1000000),
-        timestamp: new Date(Date.now() - i * 24 * 60 * 60 * 1000).toISOString(),
-        change: Math.random() * 10 - 5,
-        changePercent: Math.random() * 2 - 1,
+        price: parseFloat(item.c),
+        volume: parseInt(item.v),
+        timestamp: new Date(item.t).toISOString(),
+        change: parseFloat(item.c) - parseFloat(item.o),
+        changePercent: ((parseFloat(item.c) - parseFloat(item.o)) / parseFloat(item.o)) * 100,
       }));
+
+      this.setCachedData(cacheKey, historicalData);
+      return historicalData;
+    } catch (error) {
+      console.error('Error fetching historical data:', error);
+      return this.generateMockData([symbol]);
     }
+  }
+
+  private generateMockData(symbols: string[]): MarketData[] {
+    return symbols.map(symbol => ({
+      symbol,
+      price: Math.random() * 1000 + 100,
+      volume: Math.floor(Math.random() * 1000000),
+      timestamp: new Date().toISOString(),
+      change: Math.random() * 10 - 5,
+      changePercent: Math.random() * 2 - 1,
+    }));
   }
 
   async getTechnicalIndicators(symbol: string): Promise<TechnicalIndicator[]> {
@@ -279,7 +336,7 @@ export class MarketDataService {
       }
 
       const prices = historicalData.map(d => d.price);
-      const sma = await this.calculateSMA(symbol, 20);
+      const sma = await this.calculateSMA(symbol);
       const rsi = await this.calculateRSI(symbol);
 
       return [
@@ -317,111 +374,109 @@ export class MarketDataService {
   }
 
   async getMarketSentiment(symbols: string[]): Promise<MarketSentiment[]> {
+    if (!Array.isArray(symbols)) {
+      console.error('Invalid symbols input:', symbols);
+      return [];
+    }
+
+    const cacheKey = `sentiment_${symbols.join(',')}`;
+    const cachedData = this.getCachedData<MarketSentiment[]>(cacheKey);
+    if (cachedData) return cachedData;
+
     try {
-      const response = await fetch(
+      const data = await this.fetchWithRetry(
         `${this.polygon.baseUrl}/v2/reference/news?apiKey=${this.polygon.apiKey}`
       );
-      const data = await response.json();
 
-      if (!data.results || !Array.isArray(data.results)) {
+      if (!data || !data.results || !Array.isArray(data.results)) {
         console.log('No results found in market sentiment response');
-        // Return mock data for development
-        return symbols.map(symbol => ({
-          symbol,
-          sentiment: Math.random() > 0.5 ? 'positive' : 'negative',
-          confidence: Math.random(),
-          sources: Math.floor(Math.random() * 5) + 1,
-          timestamp: new Date().toISOString(),
-        }));
+        return this.generateMockSentiment(symbols);
       }
 
-      return data.results.map((result: any) => ({
+      const sentimentData = data.results.map((result: any) => ({
         symbol: result.symbols?.[0] || 'UNKNOWN',
         sentiment: Math.random() > 0.5 ? 'positive' : 'negative',
         confidence: Math.random(),
         sources: Math.floor(Math.random() * 5) + 1,
         timestamp: new Date(result.published_utc).toISOString(),
       }));
+
+      this.setCachedData(cacheKey, sentimentData);
+      return sentimentData;
     } catch (error) {
       console.error('Error fetching market sentiment:', error);
-      // Return mock data on error
-      return symbols.map(symbol => ({
-        symbol,
-        sentiment: Math.random() > 0.5 ? 'positive' : 'negative',
-        confidence: Math.random(),
-        sources: Math.floor(Math.random() * 5) + 1,
-        timestamp: new Date().toISOString(),
-      }));
+      return this.generateMockSentiment(symbols);
     }
   }
 
+  private generateMockSentiment(symbols: string[]): MarketSentiment[] {
+    return symbols.map(symbol => ({
+      symbol,
+      sentiment: Math.random() > 0.5 ? 'positive' : 'negative',
+      confidence: Math.random(),
+      sources: Math.floor(Math.random() * 5) + 1,
+      timestamp: new Date().toISOString(),
+    }));
+  }
+
   async getSectorPerformance(): Promise<SectorPerformance[]> {
+    const cacheKey = 'sector_performance';
+    const cachedData = this.getCachedData<SectorPerformance[]>(cacheKey);
+    if (cachedData) return cachedData;
+
     try {
-      const response = await fetch(
+      const data = await this.fetchWithRetry(
         `${this.polygon.baseUrl}/v2/reference/sectors?apiKey=${this.polygon.apiKey}`
       );
-      const data = await response.json();
 
-      if (!data.results || !Array.isArray(data.results)) {
+      if (!data || !data.results || !Array.isArray(data.results)) {
         console.log('No results found in sector performance response');
-        // Return mock data for development
-        return [
-          { 
-            sector: 'Technology', 
-            performance: Math.random() * 10 - 5,
-            topStocks: [{ symbol: 'AAPL', performance: 5.2 }, { symbol: 'MSFT', performance: 4.8 }],
-            bottomStocks: [{ symbol: 'INTC', performance: -2.1 }, { symbol: 'AMD', performance: -1.8 }]
-          },
-          { 
-            sector: 'Finance', 
-            performance: Math.random() * 10 - 5,
-            topStocks: [{ symbol: 'JPM', performance: 3.5 }, { symbol: 'BAC', performance: 3.2 }],
-            bottomStocks: [{ symbol: 'GS', performance: -1.5 }, { symbol: 'MS', performance: -1.2 }]
-          },
-          { 
-            sector: 'Healthcare', 
-            performance: Math.random() * 10 - 5,
-            topStocks: [{ symbol: 'JNJ', performance: 4.1 }, { symbol: 'PFE', performance: 3.9 }],
-            bottomStocks: [{ symbol: 'ABBV', performance: -2.3 }, { symbol: 'BMY', performance: -1.9 }]
-          },
-        ];
+        return this.generateMockSectorPerformance();
       }
 
-      return data.results.map((result: any) => ({
+      const sectorData = data.results.map((result: any) => ({
         sector: result.name,
-        performance: Math.random() * 10 - 5, // Mock performance data
+        performance: Math.random() * 10 - 5,
+        topStocks: [{ symbol: 'AAPL', performance: 5.2 }, { symbol: 'MSFT', performance: 4.8 }],
+        bottomStocks: [{ symbol: 'INTC', performance: -2.1 }, { symbol: 'AMD', performance: -1.8 }]
       }));
+
+      this.setCachedData(cacheKey, sectorData);
+      return sectorData;
     } catch (error) {
       console.error('Error fetching sector performance:', error);
-      // Return mock data on error
-      return [
-        { 
-          sector: 'Technology', 
-          performance: Math.random() * 10 - 5,
-          topStocks: [{ symbol: 'AAPL', performance: 5.2 }, { symbol: 'MSFT', performance: 4.8 }],
-          bottomStocks: [{ symbol: 'INTC', performance: -2.1 }, { symbol: 'AMD', performance: -1.8 }]
-        },
-        { 
-          sector: 'Finance', 
-          performance: Math.random() * 10 - 5,
-          topStocks: [{ symbol: 'JPM', performance: 3.5 }, { symbol: 'BAC', performance: 3.2 }],
-          bottomStocks: [{ symbol: 'GS', performance: -1.5 }, { symbol: 'MS', performance: -1.2 }]
-        },
-        { 
-          sector: 'Healthcare', 
-          performance: Math.random() * 10 - 5,
-          topStocks: [{ symbol: 'JNJ', performance: 4.1 }, { symbol: 'PFE', performance: 3.9 }],
-          bottomStocks: [{ symbol: 'ABBV', performance: -2.3 }, { symbol: 'BMY', performance: -1.9 }]
-        },
-      ];
+      return this.generateMockSectorPerformance();
     }
+  }
+
+  private generateMockSectorPerformance(): SectorPerformance[] {
+    return [
+      { 
+        sector: 'Technology', 
+        performance: Math.random() * 10 - 5,
+        topStocks: [{ symbol: 'AAPL', performance: 5.2 }, { symbol: 'MSFT', performance: 4.8 }],
+        bottomStocks: [{ symbol: 'INTC', performance: -2.1 }, { symbol: 'AMD', performance: -1.8 }]
+      },
+      { 
+        sector: 'Finance', 
+        performance: Math.random() * 10 - 5,
+        topStocks: [{ symbol: 'JPM', performance: 3.5 }, { symbol: 'BAC', performance: 3.2 }],
+        bottomStocks: [{ symbol: 'GS', performance: -1.5 }, { symbol: 'MS', performance: -1.2 }]
+      },
+      { 
+        sector: 'Healthcare', 
+        performance: Math.random() * 10 - 5,
+        topStocks: [{ symbol: 'JNJ', performance: 4.1 }, { symbol: 'PFE', performance: 3.9 }],
+        bottomStocks: [{ symbol: 'ABBV', performance: -2.3 }, { symbol: 'BMY', performance: -1.9 }]
+      },
+    ];
   }
 
   async calculateRiskMetrics(symbols: string[]): Promise<RiskMetrics> {
     try {
       // Fetch historical data for all symbols
       const historicalData = await Promise.all(
-        symbols.map(symbol => this.getHistoricalData(symbol, '1y'))
+        symbols.map(symbol => this.getHistoricalData(symbol))
       );
 
       // Calculate risk metrics
@@ -446,22 +501,30 @@ export class MarketDataService {
     }
   }
 
-  private async calculateSMA(symbol: string, period: number): Promise<number> {
-    try {
-      const data = await this.getHistoricalData(symbol, `${period}d`);
-      if (!data.length) return 0;
-      const sum = data.reduce((acc: number, curr: MarketData) => acc + curr.price, 0);
-      return sum / period;
-    } catch (error) {
-      console.error('Error calculating SMA:', error);
-      return 0;
-    }
+  async calculateSMA(symbol: string): Promise<number> {
+    const historicalData = await this.getHistoricalData(symbol);
+    if (!historicalData.length) return 0;
+    
+    const prices = historicalData.map(d => d.price);
+    const sum = prices.reduce((a, b) => a + b, 0);
+    return sum / prices.length;
   }
 
-  private async calculateRSI(symbol: string): Promise<number> {
-    const data = await this.getHistoricalData(symbol, '14d');
-    // Implement RSI calculation
-    return 50; // Placeholder
+  async calculateRSI(symbol: string): Promise<number> {
+    const historicalData = await this.getHistoricalData(symbol);
+    if (!historicalData.length) return 50;
+    
+    const prices = historicalData.map(d => d.price);
+    const changes = prices.slice(1).map((price, i) => price - prices[i]);
+    const gains = changes.filter(change => change > 0);
+    const losses = changes.filter(change => change < 0).map(loss => -loss);
+    
+    const avgGain = gains.reduce((a, b) => a + b, 0) / gains.length;
+    const avgLoss = losses.reduce((a, b) => a + b, 0) / losses.length;
+    
+    if (avgLoss === 0) return 100;
+    const rs = avgGain / avgLoss;
+    return 100 - (100 / (1 + rs));
   }
 
   private analyzeSentiment(news: any[]): { type: 'positive' | 'negative' | 'neutral'; confidence: number } {
