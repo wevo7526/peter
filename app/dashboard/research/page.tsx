@@ -2,348 +2,211 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { createBrowserClient } from '@supabase/ssr';
+import { supabase } from '@/app/lib/supabase';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Loader2, Search, TrendingUp, Activity, BarChart2, AlertTriangle } from 'lucide-react';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
-interface MarketData {
-  symbol: string;
-  price: number;
-  volume: number;
-  timestamp: string;
-  change: number;
-  changePercent: number;
-}
-
-interface TechnicalIndicator {
-  name: string;
-  value: number;
-  signal: 'buy' | 'sell' | 'neutral';
-}
-
-interface MarketSentiment {
-  symbol: string;
-  sentiment: 'positive' | 'negative' | 'neutral';
-  confidence: number;
-}
-
-interface SectorPerformance {
-  sector: string;
-  performance: number;
-  topStocks: Array<{
-    symbol: string;
-    performance: number;
-  }>;
-  bottomStocks: Array<{
-    symbol: string;
-    performance: number;
-  }>;
-}
-
-interface RiskMetrics {
-  beta: number;
-  alpha: number;
-  sharpeRatio: number;
-  volatility: number;
-  maxDrawdown: number;
-  correlation: number;
-}
-
-interface MarketInsight {
-  type: 'technical' | 'fundamental' | 'sentiment';
+interface ResearchResult {
+  id: string;
   title: string;
   description: string;
-  confidence: number;
-  timestamp: string;
-}
-
-interface ResearchResponse {
-  response: string;
-  marketData: MarketData[];
-  technicalIndicators: TechnicalIndicator[];
-  sentiment: MarketSentiment[];
-  sectorPerformance: SectorPerformance[];
-  riskMetrics: RiskMetrics | null;
-  marketInsights: MarketInsight[];
+  type: string;
+  date: string;
+  source: string;
+  url: string;
+  tags: string[];
 }
 
 export default function ResearchPage() {
-  const [query, setQuery] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [research, setResearch] = useState<ResearchResponse | null>(null);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const router = useRouter();
-  
-  // Initialize Supabase client
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
+  const [query, setQuery] = useState('');
+  const [type, setType] = useState('all');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [results, setResults] = useState<ResearchResult[]>([]);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   useEffect(() => {
-    // Check authentication status
     const checkAuth = async () => {
       try {
-        const { data: { session }, error } = await supabase.auth.getSession();
-        if (error) throw error;
-        
-        if (!session) {
-          router.push('/auth');
-          return;
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        if (sessionError) {
+          throw sessionError;
         }
-        
-        setIsAuthenticated(true);
-      } catch (error) {
-        console.error('Auth error:', error);
-        router.push('/auth');
+        setIsAuthenticated(!!session);
+        if (!session) {
+          router.push('/auth/signin');
+        }
+      } catch (err) {
+        console.error('Auth check error:', err);
+        setError('Authentication error');
+        router.push('/auth/signin');
+      } finally {
+        setLoading(false);
       }
     };
 
     checkAuth();
 
-    // Subscribe to auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setIsAuthenticated(!!session);
       if (!session) {
-        setIsAuthenticated(false);
-        router.push('/auth');
-      } else {
-        setIsAuthenticated(true);
+        router.push('/auth/signin');
       }
     });
 
     return () => {
       subscription.unsubscribe();
     };
-  }, [router, supabase.auth]);
+  }, [router]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!isAuthenticated) {
-      router.push('/auth');
-      return;
-    }
+    if (!isAuthenticated) return;
 
     setLoading(true);
     setError(null);
 
     try {
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      if (sessionError || !session) {
-        throw new Error('Authentication error');
+      let queryBuilder = supabase
+        .from('research')
+        .select('*')
+        .ilike('title', `%${query}%`);
+
+      if (type !== 'all') {
+        queryBuilder = queryBuilder.eq('type', type);
       }
 
-      const response = await fetch('/api/research', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`,
-        },
-        body: JSON.stringify({ query }),
-      });
+      const { data, error: searchError } = await queryBuilder
+        .order('date', { ascending: false });
 
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || 'Failed to get research');
+      if (searchError) {
+        throw new Error(searchError.message);
       }
 
-      const data = await response.json();
-      setResearch(data);
+      setResults(data || []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
-      if (err instanceof Error && err.message === 'Authentication error') {
-        router.push('/auth');
-      }
+      console.error('Research search error:', err);
+      setError(err instanceof Error ? err.message : 'Failed to search research');
     } finally {
       setLoading(false);
     }
   };
 
-  if (!isAuthenticated) {
+  if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-emerald-500"></div>
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
       </div>
     );
   }
 
+  if (!isAuthenticated) {
+    return null;
+  }
+
   return (
-    <div className="container mx-auto p-6 space-y-6">
-      <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold">Market Research</h1>
-        <Button variant="outline" onClick={() => router.push('/dashboard')}>
+    <div className="p-6">
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl font-bold">Investment Research</h1>
+        <Button onClick={() => router.push('/dashboard')}>
           Back to Dashboard
         </Button>
       </div>
 
-      <form onSubmit={handleSubmit} className="flex gap-4">
-        <Input
-          placeholder="Enter your research query (e.g., 'Analyze AAPL and MSFT performance')"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          className="flex-1"
-        />
-        <Button type="submit" disabled={loading}>
-          {loading ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Analyzing...
-            </>
-          ) : (
-            <>
-              <Search className="mr-2 h-4 w-4" />
-              Research
-            </>
-          )}
-        </Button>
+      <form onSubmit={handleSearch} className="mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label htmlFor="query">Search Query</Label>
+            <Input
+              id="query"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search for investment research..."
+              className="w-full"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="type">Research Type</Label>
+            <Select value={type} onValueChange={setType}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Types</SelectItem>
+                <SelectItem value="market_analysis">Market Analysis</SelectItem>
+                <SelectItem value="company_research">Company Research</SelectItem>
+                <SelectItem value="economic_analysis">Economic Analysis</SelectItem>
+                <SelectItem value="sector_analysis">Sector Analysis</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        <div className="mt-4 flex justify-end">
+          <Button type="submit" disabled={loading}>
+            {loading ? (
+              <>
+                <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                Searching...
+              </>
+            ) : (
+              'Search'
+            )}
+          </Button>
+        </div>
       </form>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
+        <div className="bg-red-50 text-red-800 p-4 rounded-lg mb-6">
           {error}
         </div>
       )}
 
-      {research && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Market Data */}
-          {research.marketData.length > 0 && (
-            <Card>
+      {results.length > 0 ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {results.map((result) => (
+            <Card key={result.id} className="hover:shadow-lg transition-shadow">
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <TrendingUp className="h-5 w-5" />
-                  Market Data
-                </CardTitle>
+                <CardTitle className="text-lg">{result.title}</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  {research.marketData.map((data) => (
-                    <div key={data.symbol} className="flex justify-between items-center">
-                      <span className="font-medium">{data.symbol}</span>
-                      <div className="text-right">
-                        <div className="font-semibold">${data.price.toFixed(2)}</div>
-                        <div className={`text-sm ${data.changePercent >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                          {data.changePercent >= 0 ? '+' : ''}{data.changePercent.toFixed(2)}%
-                        </div>
-                      </div>
-                    </div>
-                  ))}
+                  <p className="text-gray-600">{result.description}</p>
+                  <div className="flex flex-wrap gap-2">
+                    {result.tags.map((tag) => (
+                      <span
+                        key={tag}
+                        className="px-2 py-1 bg-gray-100 text-gray-700 rounded-full text-sm"
+                      >
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                  <div className="flex justify-between items-center text-sm text-gray-500">
+                    <span>{new Date(result.date).toLocaleDateString()}</span>
+                    <span className="capitalize">{result.type.replace('_', ' ')}</span>
+                  </div>
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => window.open(result.url, '_blank')}
+                  >
+                    Read More
+                  </Button>
                 </div>
               </CardContent>
             </Card>
-          )}
-
-          {/* Technical Indicators */}
-          {research.technicalIndicators.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Activity className="h-5 w-5" />
-                  Technical Indicators
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {research.technicalIndicators.map((indicator) => (
-                    <div key={indicator.name} className="flex justify-between items-center">
-                      <span className="font-medium">{indicator.name}</span>
-                      <div className="text-right">
-                        <div className="font-semibold">{indicator.value.toFixed(2)}</div>
-                        <div className={`text-sm ${
-                          indicator.signal === 'buy' ? 'text-green-600' :
-                          indicator.signal === 'sell' ? 'text-red-600' :
-                          'text-yellow-600'
-                        }`}>
-                          {indicator.signal.toUpperCase()}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Market Sentiment */}
-          {research.sentiment.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <BarChart2 className="h-5 w-5" />
-                  Market Sentiment
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {research.sentiment.map((s) => (
-                    <div key={s.symbol} className="flex justify-between items-center">
-                      <span className="font-medium">{s.symbol}</span>
-                      <div className="text-right">
-                        <div className={`font-semibold ${
-                          s.sentiment === 'positive' ? 'text-green-600' :
-                          s.sentiment === 'negative' ? 'text-red-600' :
-                          'text-yellow-600'
-                        }`}>
-                          {s.sentiment.toUpperCase()}
-                        </div>
-                        <div className="text-sm text-gray-600">
-                          Confidence: {(s.confidence * 100).toFixed(1)}%
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Risk Metrics */}
-          {research.riskMetrics && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <AlertTriangle className="h-5 w-5" />
-                  Risk Metrics
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div className="flex justify-between">
-                    <span className="font-medium">Beta</span>
-                    <span className="font-semibold">{research.riskMetrics.beta.toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="font-medium">Alpha</span>
-                    <span className="font-semibold">{research.riskMetrics.alpha.toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="font-medium">Sharpe Ratio</span>
-                    <span className="font-semibold">{research.riskMetrics.sharpeRatio.toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="font-medium">Volatility</span>
-                    <span className="font-semibold">{research.riskMetrics.volatility.toFixed(2)}%</span>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* AI Analysis */}
-          <Card className="md:col-span-2">
-            <CardHeader>
-              <CardTitle>AI Analysis</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="prose max-w-none">
-                {research.response.split('\n').map((paragraph, index) => (
-                  <p key={index}>{paragraph}</p>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
+          ))}
+        </div>
+      ) : !loading && !error && (
+        <div className="text-center text-gray-500 py-8">
+          No research results found. Try adjusting your search criteria.
         </div>
       )}
     </div>

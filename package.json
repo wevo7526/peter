@@ -13,6 +13,8 @@
     "@heroicons/react": "^2.2.0",
     "@langchain/anthropic": "^0.3.15",
     "@langchain/core": "^0.3.43",
+    "@radix-ui/react-label": "^2.1.2",
+    "@radix-ui/react-select": "^2.1.6",
     "@radix-ui/react-slot": "^1.1.2",
     "@supabase/ssr": "^0.1.0",
     "@supabase/supabase-js": "^2.49.4",
