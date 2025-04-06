@@ -215,7 +215,7 @@ export async function generatePortfolioRecommendations(input: {
     const formattedInput = {
       age: input.age.toString(),
       income: input.income.toString(),
-      goals: input.goals.split(',').map(goal => goal.trim()),
+      goals: input.goals,
       riskTolerance: input.riskTolerance,
       timeHorizon: input.timeHorizon.toString(),
       input: input.query || 'Generate a portfolio recommendation based on my profile.'

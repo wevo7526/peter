@@ -1,19 +1,30 @@
 import { NextResponse } from 'next/server';
 import { generatePortfolioRecommendations } from '@/app/services/portfolioAgent';
-import { getSession } from '@auth0/nextjs-auth0';
-import { cookies } from 'next/headers';
+import { createClient } from '@supabase/supabase-js';
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
 
 export async function POST(request: Request) {
   try {
-    // Get session directly
-    const session = await getSession();
+    // Get the authorization header
+    const authHeader = request.headers.get('Authorization');
+    if (!authHeader) {
+      return NextResponse.json({ error: 'No authorization header' }, { status: 401 });
+    }
+
+    // Extract the token
+    const token = authHeader.replace('Bearer ', '');
     
-    if (!session?.user) {
+    // Set the session
+    const { data: { user }, error: userError } = await supabase.auth.getUser(token);
+    if (userError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const body = await request.json();
-    const userId = session.user.sub;
     
     // Generate recommendations without caching
     const recommendations = await generatePortfolioRecommendations({

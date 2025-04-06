@@ -3,6 +3,13 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/app/lib/supabase';
+import { Button } from '@/components/ui/button';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+
+interface AssetAllocation {
+  asset: string;
+  percentage: number;
+}
 
 interface PortfolioResponse {
   portfolio: {
@@ -12,10 +19,7 @@ interface PortfolioResponse {
     riskProfile: string;
     targetReturn: number;
     maxDrawdown: number;
-    assetAllocation: {
-      asset: string;
-      percentage: number;
-    }[];
+    assetAllocation: AssetAllocation[];
   };
   message: string;
 }
@@ -24,6 +28,7 @@ export default function CreatePortfolio() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
   const [formData, setFormData] = useState({
     age: '',
     income: '',
@@ -32,6 +37,8 @@ export default function CreatePortfolio() {
     timeHorizon: '',
     query: '',
   });
+  const [generatedPortfolio, setGeneratedPortfolio] = useState<any>(null);
+  const [showResults, setShowResults] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -39,31 +46,45 @@ export default function CreatePortfolio() {
     setError(null);
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        router.push('/auth');
-        return;
+      // Get the current session
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !session) {
+        throw new Error('Not authenticated');
       }
 
-      const response = await fetch('/api/portfolio/create', {
+      const response = await fetch('/api/portfolio/generate', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
         },
         body: JSON.stringify({
-          ...formData,
-          userId: user.id,
+          age: parseInt(formData.age),
+          income: parseInt(formData.income),
+          goals: formData.goals,
+          riskTolerance: formData.riskTolerance,
+          timeHorizon: parseInt(formData.timeHorizon),
+          input: formData.query,
         }),
       });
 
       if (!response.ok) {
-        throw new Error('Failed to create portfolio');
+        const errorData = await response.json();
+        console.error('Portfolio generation error response:', {
+          status: response.status,
+          statusText: response.statusText,
+          error: errorData
+        });
+        throw new Error(errorData.error || 'Failed to generate portfolio');
       }
 
-      const data: PortfolioResponse = await response.json();
-      router.push(`/dashboard/portfolio/${data.portfolio.id}`);
-    } catch (error) {
-      setError(error instanceof Error ? error.message : 'Failed to create portfolio');
+      const data = await response.json();
+      console.log('Generated portfolio data:', data);
+      setGeneratedPortfolio(data);
+      setShowResults(true);
+    } catch (err) {
+      console.error('Portfolio generation error:', err);
+      setError(err instanceof Error ? err.message : 'Failed to generate portfolio. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -74,12 +95,77 @@ export default function CreatePortfolio() {
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
-  return (
-    <div className="container mx-auto px-4 py-8">
-      <h1 className="text-3xl font-bold mb-8">Portfolio Creation</h1>
+  const handleCreatePortfolio = async () => {
+    setLoading(true);
+    setError(null);
+    setSuccess(false);
 
-      {/* Main Form */}
-      <div className="bg-white rounded-lg shadow-md p-6 mb-8">
+    try {
+      // Get the current session
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !session) {
+        throw new Error('Not authenticated');
+      }
+
+      // Create the portfolio with the generated data
+      const portfolioData = {
+        name: 'My Investment Portfolio',
+        description: formData.query || 'A diversified investment portfolio',
+        positions: [],
+        risk_profile: formData.riskTolerance,
+        target_allocation: generatedPortfolio.portfolio.assetAllocation.map((item: AssetAllocation) => ({
+          asset: item.asset,
+          percentage: item.percentage
+        })),
+        total_value: generatedPortfolio.portfolio.totalValue || 0,
+        expected_return: generatedPortfolio.portfolio.expectedReturn || 0,
+        volatility: generatedPortfolio.portfolio.volatility || 0,
+        sharpe_ratio: generatedPortfolio.portfolio.sharpeRatio || 0,
+        recommendations: generatedPortfolio.recommendations || [],
+        performance: {
+          daily: 0,
+          weekly: 0,
+          monthly: 0,
+          yearly: 0,
+          allTime: 0
+        }
+      };
+
+      console.log('Sending portfolio data:', portfolioData);
+
+      const response = await fetch('/api/portfolios', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify(portfolioData),
+      });
+
+      const responseData = await response.json();
+
+      if (!response.ok) {
+        console.error('Portfolio creation error:', responseData);
+        throw new Error(responseData.error || 'Failed to create portfolio');
+      }
+
+      setSuccess(true);
+      setTimeout(() => {
+        router.push(`/dashboard/portfolio/${responseData.id}`);
+      }, 1500);
+    } catch (err) {
+      console.error('Portfolio creation error:', err);
+      setError(err instanceof Error ? err.message : 'Failed to create portfolio');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="p-6">
+      <h1 className="text-2xl font-bold mb-6">Create New Portfolio</h1>
+
+      {!showResults ? (
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* Query Section */}
           <div>
@@ -254,13 +340,147 @@ export default function CreatePortfolio() {
             </button>
           </div>
         </form>
-
-        {error && (
-          <div className="mt-4 p-4 bg-red-100 text-red-800 rounded-md">
-            {error}
+      ) : (
+        <div className="space-y-6">
+          <div className="flex justify-between items-center">
+            <h2 className="text-xl font-semibold">Generated Portfolio</h2>
+            <Button onClick={() => setShowResults(false)}>Generate Another</Button>
           </div>
-        )}
-      </div>
+
+          <div className="prose max-w-none">
+            <div className="bg-white rounded-lg shadow p-6 mb-6">
+              <h3 className="text-lg font-semibold mb-4">Investment Strategy</h3>
+              <div className="whitespace-pre-wrap">{generatedPortfolio?.output?.split('JSON Response:')[0]}</div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Portfolio Overview</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    <div>
+                      <h4 className="font-medium mb-2">Total Value</h4>
+                      <p className="text-2xl font-bold">${generatedPortfolio?.portfolio?.totalValue.toLocaleString()}</p>
+                    </div>
+                    <div>
+                      <h4 className="font-medium mb-2">Risk Score</h4>
+                      <p className="text-2xl font-bold">{(generatedPortfolio?.portfolio?.riskScore * 100).toFixed(0)}%</p>
+                    </div>
+                    <div>
+                      <h4 className="font-medium mb-2">Expected Return</h4>
+                      <p className="text-2xl font-bold">{(generatedPortfolio?.portfolio?.expectedReturn * 100).toFixed(1)}%</p>
+                    </div>
+                    <div>
+                      <h4 className="font-medium mb-2">Volatility</h4>
+                      <p className="text-2xl font-bold">{(generatedPortfolio?.portfolio?.volatility * 100).toFixed(1)}%</p>
+                    </div>
+                    <div>
+                      <h4 className="font-medium mb-2">Sharpe Ratio</h4>
+                      <p className="text-2xl font-bold">{generatedPortfolio?.portfolio?.sharpeRatio.toFixed(2)}</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Asset Allocation</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {generatedPortfolio?.portfolio?.assetAllocation.map((allocation: any) => (
+                      <div key={allocation.asset}>
+                        <div className="flex justify-between mb-1">
+                          <span className="text-sm font-medium">{allocation.asset}</span>
+                          <span className="text-sm font-medium">{allocation.percentage.toFixed(1)}%</span>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div
+                            className="bg-blue-600 h-2 rounded-full"
+                            style={{ width: `${allocation.percentage}%` }}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            <Card className="mt-6">
+              <CardHeader>
+                <CardTitle>Recommendations</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {generatedPortfolio?.recommendations.map((rec: any, index: number) => (
+                    <div key={index} className="border-b pb-4 last:border-0">
+                      <div className="flex items-center gap-2 mb-2">
+                        <h4 className="font-medium">{rec.type}</h4>
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                          rec.priority === 'high' ? 'bg-red-100 text-red-800' :
+                          rec.priority === 'medium' ? 'bg-yellow-100 text-yellow-800' :
+                          'bg-green-100 text-green-800'
+                        }`}>
+                          {rec.priority}
+                        </span>
+                      </div>
+                      <p className="text-gray-600 mb-2">{rec.description}</p>
+                      <p className="text-sm text-gray-500">Impact: {rec.impact}</p>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+
+            <div className="mt-6 space-y-4">
+              {error && (
+                <div className="p-4 bg-red-50 text-red-800 rounded-lg">
+                  {error}
+                </div>
+              )}
+              {success && (
+                <div className="p-4 bg-green-50 text-green-800 rounded-lg">
+                  Portfolio saved successfully! Redirecting...
+                </div>
+              )}
+              <div className="flex justify-end gap-4">
+                <Button
+                  variant="outline"
+                  onClick={() => setShowResults(false)}
+                  disabled={loading}
+                >
+                  Generate Another
+                </Button>
+                <Button
+                  onClick={handleCreatePortfolio}
+                  disabled={loading}
+                  className="bg-emerald-600 hover:bg-emerald-700"
+                >
+                  {loading ? (
+                    <>
+                      <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
+                      </svg>
+                      Save Portfolio
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 } 

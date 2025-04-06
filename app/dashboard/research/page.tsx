@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { createBrowserClient } from '@supabase/ssr';
 import { Button } from '@/components/ui/button';
@@ -21,15 +21,12 @@ interface TechnicalIndicator {
   name: string;
   value: number;
   signal: 'buy' | 'sell' | 'neutral';
-  timestamp: string;
 }
 
 interface MarketSentiment {
   symbol: string;
   sentiment: 'positive' | 'negative' | 'neutral';
   confidence: number;
-  sources: number;
-  timestamp: string;
 }
 
 interface SectorPerformance {
@@ -54,6 +51,14 @@ interface RiskMetrics {
   correlation: number;
 }
 
+interface MarketInsight {
+  type: 'technical' | 'fundamental' | 'sentiment';
+  title: string;
+  description: string;
+  confidence: number;
+  timestamp: string;
+}
+
 interface ResearchResponse {
   response: string;
   marketData: MarketData[];
@@ -61,7 +66,7 @@ interface ResearchResponse {
   sentiment: MarketSentiment[];
   sectorPerformance: SectorPerformance[];
   riskMetrics: RiskMetrics | null;
-  marketInsights: any;
+  marketInsights: MarketInsight[];
 }
 
 export default function ResearchPage() {
@@ -69,22 +74,72 @@ export default function ResearchPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [research, setResearch] = useState<ResearchResponse | null>(null);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const router = useRouter();
+  
+  // Initialize Supabase client
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
 
+  useEffect(() => {
+    // Check authentication status
+    const checkAuth = async () => {
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession();
+        if (error) throw error;
+        
+        if (!session) {
+          router.push('/auth');
+          return;
+        }
+        
+        setIsAuthenticated(true);
+      } catch (error) {
+        console.error('Auth error:', error);
+        router.push('/auth');
+      }
+    };
+
+    checkAuth();
+
+    // Subscribe to auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!session) {
+        setIsAuthenticated(false);
+        router.push('/auth');
+      } else {
+        setIsAuthenticated(true);
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [router, supabase.auth]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isAuthenticated) {
+      router.push('/auth');
+      return;
+    }
+
     setLoading(true);
     setError(null);
 
     try {
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !session) {
+        throw new Error('Authentication error');
+      }
+
       const response = await fetch('/api/research', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
         },
         body: JSON.stringify({ query }),
       });
@@ -98,10 +153,21 @@ export default function ResearchPage() {
       setResearch(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
+      if (err instanceof Error && err.message === 'Authentication error') {
+        router.push('/auth');
+      }
     } finally {
       setLoading(false);
     }
   };
+
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-emerald-500"></div>
+      </div>
+    );
+  }
 
   return (
     <div className="container mx-auto p-6 space-y-6">
