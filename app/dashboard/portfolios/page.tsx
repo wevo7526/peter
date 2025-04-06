@@ -109,11 +109,7 @@ export default function PortfoliosPage() {
       {portfolios.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {portfolios.map((portfolio) => (
-            <Card 
-              key={portfolio.id} 
-              className="cursor-pointer hover:shadow-lg transition-shadow"
-              onClick={() => router.push(`/dashboard/portfolio/${portfolio.id}`)}
-            >
+            <Card key={portfolio.id}>
               <CardHeader>
                 <CardTitle>{portfolio.name}</CardTitle>
               </CardHeader>

@@ -4,27 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/app/lib/supabase';
 import { motion, AnimatePresence } from 'framer-motion';
-import { 
-  Loader2, 
-  ChevronDown, 
-  ChevronUp, 
-  Copy, 
-  Check, 
-  Lightbulb,
-  TrendingUp,
-  Target,
-  BarChart3,
-  AlertCircle,
-  ArrowRight,
-  Clock,
-  CheckCircle2,
-  LineChart,
-  PieChart,
-  DollarSign,
-  Percent,
-  TrendingDown,
-  Info
-} from 'lucide-react';
+import { Loader2, ChevronDown, ChevronUp, Copy, Check } from 'lucide-react';
 
 interface MarketContext {
   currentTrends: string[];
@@ -51,63 +31,6 @@ interface InvestmentThesis {
   portfolioImplications: PortfolioImplications;
   supportingData: SupportingData;
 }
-
-interface MetricData {
-  label: string;
-  value: number;
-  unit: string;
-  year?: string;
-  trend?: 'up' | 'down' | 'neutral';
-}
-
-interface IndicatorData {
-  label: string;
-  description: string;
-  icon: React.ReactNode;
-}
-
-const formatMetricValue = (value: number, unit: string) => {
-  if (unit === 'percentage') {
-    return `${value.toFixed(1)}%`;
-  }
-  if (unit === 'currency') {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(value);
-  }
-  return value.toString();
-};
-
-const getMetricTrend = (value: number, previousValue?: number): 'up' | 'down' | 'neutral' => {
-  if (!previousValue) return 'neutral';
-  return value > previousValue ? 'up' : value < previousValue ? 'down' : 'neutral';
-};
-
-const indicators: IndicatorData[] = [
-  {
-    label: 'Assets under management',
-    description: 'Total value of assets being managed by investment firms',
-    icon: <DollarSign className="w-4 h-4 text-blue-500" />
-  },
-  {
-    label: 'Net IRRs',
-    description: 'Internal Rate of Return after fees and expenses',
-    icon: <Percent className="w-4 h-4 text-green-500" />
-  },
-  {
-    label: 'Default rates',
-    description: 'Percentage of loans or bonds that fail to meet payment obligations',
-    icon: <AlertCircle className="w-4 h-4 text-red-500" />
-  },
-  {
-    label: 'Recovery rates',
-    description: 'Percentage of value recovered from defaulted investments',
-    icon: <TrendingUp className="w-4 h-4 text-emerald-500" />
-  }
-];
 
 export default function ThesisPage() {
   const router = useRouter();
@@ -222,9 +145,8 @@ export default function ThesisPage() {
       <motion.h1 
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="text-3xl font-bold mb-8 flex items-center gap-2 text-gray-900"
+        className="text-3xl font-bold mb-8"
       >
-        <Lightbulb className="w-8 h-8 text-emerald-500" />
         Investment Thesis Generator
       </motion.h1>
 
@@ -236,8 +158,7 @@ export default function ThesisPage() {
         transition={{ delay: 0.2 }}
       >
         <div className="mb-4">
-          <label htmlFor="query" className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
-            <Target className="w-4 h-4 text-emerald-500" />
+          <label htmlFor="query" className="block text-sm font-medium text-gray-700 mb-2">
             What would you like to analyze?
           </label>
           <textarea
@@ -264,10 +185,7 @@ export default function ThesisPage() {
               Generating...
             </>
           ) : (
-            <>
-              <ArrowRight className="w-4 h-4" />
-              Generate Thesis
-            </>
+            'Generate Thesis'
           )}
         </motion.button>
       </motion.form>
@@ -278,9 +196,8 @@ export default function ThesisPage() {
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
-            className="mb-4 p-4 bg-red-50 text-red-800 rounded-md flex items-center gap-2"
+            className="mb-4 p-4 bg-red-100 text-red-800 rounded-md"
           >
-            <AlertCircle className="w-5 h-5 text-red-500" />
             {error}
           </motion.div>
         )}
@@ -295,10 +212,7 @@ export default function ThesisPage() {
             className="bg-white rounded-lg shadow-md p-6"
           >
             <div className="flex justify-between items-start mb-4">
-              <h2 className="text-2xl font-semibold text-gray-900 flex items-center gap-2">
-                <TrendingUp className="w-6 h-6 text-emerald-500" />
-                {thesis.title}
-              </h2>
+              <h2 className="text-2xl font-semibold text-gray-900">{thesis.title}</h2>
               <motion.button
                 onClick={() => copyToClipboard(JSON.stringify(thesis, null, 2))}
                 className="p-2 text-gray-500 hover:text-emerald-600 transition-colors"
@@ -313,9 +227,8 @@ export default function ThesisPage() {
               <motion.p 
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                className="text-gray-700 mb-6 flex items-start gap-2"
+                className="text-gray-700 mb-6"
               >
-                <CheckCircle2 className="w-5 h-5 text-emerald-500 mt-1 flex-shrink-0" />
                 {thesis.summary}
               </motion.p>
 
@@ -331,10 +244,7 @@ export default function ThesisPage() {
                     onClick={() => toggleSection('keyPoints')}
                     className="w-full px-4 py-3 bg-gray-50 hover:bg-gray-100 flex justify-between items-center"
                   >
-                    <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-                      <Target className="w-5 h-5 text-emerald-500" />
-                      Key Points
-                    </h3>
+                    <h3 className="text-lg font-semibold text-gray-900">Key Points</h3>
                     {expandedSections.keyPoints ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
                   </button>
                   <AnimatePresence>
@@ -349,12 +259,11 @@ export default function ThesisPage() {
                           {thesis.keyPoints.map((point, index) => (
                             <motion.li 
                               key={index} 
-                              className="text-gray-700 flex items-start gap-2"
+                              className="text-gray-700"
                               initial={{ opacity: 0, x: -20 }}
                               animate={{ opacity: 1, x: 0 }}
                               transition={{ delay: index * 0.1 }}
                             >
-                              <ArrowRight className="w-4 h-4 text-emerald-500 mt-1 flex-shrink-0" />
                               {point}
                             </motion.li>
                           ))}
@@ -375,10 +284,7 @@ export default function ThesisPage() {
                     onClick={() => toggleSection('marketContext')}
                     className="w-full px-4 py-3 bg-gray-50 hover:bg-gray-100 flex justify-between items-center"
                   >
-                    <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-                      <BarChart3 className="w-5 h-5 text-emerald-500" />
-                      Market Context
-                    </h3>
+                    <h3 className="text-lg font-semibold text-gray-900">Market Context</h3>
                     {expandedSections.marketContext ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
                   </button>
                   <AnimatePresence>
@@ -395,10 +301,7 @@ export default function ThesisPage() {
                             initial={{ opacity: 0, y: 10 }}
                             animate={{ opacity: 1, y: 0 }}
                           >
-                            <h4 className="font-medium text-gray-900 mb-2 capitalize flex items-center gap-2">
-                              {key === 'currentTrends' && <TrendingUp className="w-4 h-4 text-emerald-500" />}
-                              {key === 'risks' && <AlertCircle className="w-4 h-4 text-red-500" />}
-                              {key === 'opportunities' && <Lightbulb className="w-4 h-4 text-yellow-500" />}
+                            <h4 className="font-medium text-gray-900 mb-2 capitalize">
                               {key.replace(/([A-Z])/g, ' $1').trim()}
                             </h4>
                             <ul className="list-disc pl-5 space-y-2">
@@ -432,10 +335,7 @@ export default function ThesisPage() {
                     onClick={() => toggleSection('portfolioImplications')}
                     className="w-full px-4 py-3 bg-gray-50 hover:bg-gray-100 flex justify-between items-center"
                   >
-                    <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-                      <PieChart className="w-5 h-5 text-emerald-500" />
-                      Portfolio Implications
-                    </h3>
+                    <h3 className="text-lg font-semibold text-gray-900">Portfolio Implications</h3>
                     {expandedSections.portfolioImplications ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
                   </button>
                   <AnimatePresence>
@@ -452,10 +352,7 @@ export default function ThesisPage() {
                             initial={{ opacity: 0, y: 10 }}
                             animate={{ opacity: 1, y: 0 }}
                           >
-                            <h4 className="font-medium text-gray-900 mb-2 capitalize flex items-center gap-2">
-                              {key === 'recommendedActions' && <ArrowRight className="w-4 h-4 text-emerald-500" />}
-                              {key === 'timeline' && <Clock className="w-4 h-4 text-blue-500" />}
-                              {key === 'expectedOutcomes' && <CheckCircle2 className="w-4 h-4 text-green-500" />}
+                            <h4 className="font-medium text-gray-900 mb-2 capitalize">
                               {key.replace(/([A-Z])/g, ' $1').trim()}
                             </h4>
                             {Array.isArray(value) ? (
@@ -493,10 +390,7 @@ export default function ThesisPage() {
                     onClick={() => toggleSection('supportingData')}
                     className="w-full px-4 py-3 bg-gray-50 hover:bg-gray-100 flex justify-between items-center"
                   >
-                    <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-                      <LineChart className="w-5 h-5 text-emerald-500" />
-                      Supporting Data
-                    </h3>
+                    <h3 className="text-lg font-semibold text-gray-900">Supporting Data</h3>
                     {expandedSections.supportingData ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
                   </button>
                   <AnimatePresence>
@@ -505,83 +399,47 @@ export default function ThesisPage() {
                         initial={{ height: 0, opacity: 0 }}
                         animate={{ height: "auto", opacity: 1 }}
                         exit={{ height: 0, opacity: 0 }}
-                        className="px-4 py-3 space-y-6"
+                        className="px-4 py-3 space-y-4"
                       >
-                        {/* Market Metrics */}
-                        <div>
-                          <h4 className="font-medium text-gray-900 mb-4 capitalize flex items-center gap-2">
-                            <BarChart3 className="w-5 h-5 text-emerald-500" />
-                            Market Metrics
-                          </h4>
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {Object.entries(thesis.supportingData.marketMetrics).map(([key, value]) => {
-                              const year = key.match(/\d{4}/)?.[0];
-                              const label = key.replace(/\d{4}/, '').trim();
-                              const unit = key.toLowerCase().includes('rate') || key.toLowerCase().includes('irr') ? 'percentage' : 'currency';
-                              const formattedValue = formatMetricValue(value, unit);
-                              
-                              // Find previous year's value for trend calculation
-                              const previousYear = year ? parseInt(year) - 1 : undefined;
-                              const previousKey = Object.keys(thesis.supportingData.marketMetrics).find(k => 
-                                k.includes(previousYear?.toString() || '')
-                              );
-                              const previousValue = previousKey ? thesis.supportingData.marketMetrics[previousKey] : undefined;
-                              const trend = getMetricTrend(value, previousValue);
-
-                              return (
-                                <motion.div
-                                  key={key}
-                                  initial={{ opacity: 0, y: 10 }}
-                                  animate={{ opacity: 1, y: 0 }}
-                                  className="bg-gray-50 rounded-lg p-4"
-                                >
-                                  <div className="flex items-center justify-between mb-2">
-                                    <span className="text-sm text-gray-500">{label}</span>
-                                    {year && <span className="text-sm text-gray-400">{year}</span>}
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-lg font-semibold text-gray-900">{formattedValue}</span>
-                                    {trend !== 'neutral' && (
-                                      <span className={`flex items-center gap-1 text-sm ${
-                                        trend === 'up' ? 'text-green-500' : 'text-red-500'
-                                      }`}>
-                                        {trend === 'up' ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
-                                        {previousValue && `${((value - previousValue) / previousValue * 100).toFixed(1)}%`}
-                                      </span>
-                                    )}
-                                  </div>
-                                </motion.div>
-                              );
-                            })}
-                          </div>
-                        </div>
-
-                        {/* Relevant Indicators */}
-                        <div>
-                          <h4 className="font-medium text-gray-900 mb-4 capitalize flex items-center gap-2">
-                            <TrendingUp className="w-5 h-5 text-blue-500" />
-                            Relevant Indicators
-                          </h4>
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {indicators.map((indicator, index) => (
-                              <motion.div
-                                key={index}
-                                initial={{ opacity: 0, x: -20 }}
-                                animate={{ opacity: 1, x: 0 }}
-                                transition={{ delay: index * 0.1 }}
-                                className="bg-gray-50 rounded-lg p-4 flex items-start gap-3"
-                              >
-                                <div className="p-2 bg-white rounded-lg shadow-sm">
-                                  {indicator.icon}
-                                </div>
-                                <div>
-                                  <h5 className="font-medium text-gray-900 mb-1">{indicator.label}</h5>
-                                  <p className="text-sm text-gray-600">{indicator.description}</p>
-                                </div>
-                              </motion.div>
-                            ))}
-                          </div>
-                        </div>
+                        {Object.entries(thesis.supportingData).map(([key, value]) => (
+                          <motion.div
+                            key={key}
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                          >
+                            <h4 className="font-medium text-gray-900 mb-2 capitalize">
+                              {key.replace(/([A-Z])/g, ' $1').trim()}
+                            </h4>
+                            {typeof value === 'object' ? (
+                              <ul className="list-disc pl-5 space-y-2">
+                                {Object.entries(value as Record<string, any>).map(([subKey, subValue]) => (
+                                  <motion.li 
+                                    key={subKey} 
+                                    className="text-gray-700"
+                                    initial={{ opacity: 0, x: -20 }}
+                                    animate={{ opacity: 1, x: 0 }}
+                                  >
+                                    {subKey.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())}: {subValue}
+                                  </motion.li>
+                                ))}
+                              </ul>
+                            ) : (
+                              <ul className="list-disc pl-5 space-y-2">
+                                {(value as string[]).map((item, index) => (
+                                  <motion.li 
+                                    key={index} 
+                                    className="text-gray-700"
+                                    initial={{ opacity: 0, x: -20 }}
+                                    animate={{ opacity: 1, x: 0 }}
+                                    transition={{ delay: index * 0.1 }}
+                                  >
+                                    {item}
+                                  </motion.li>
+                                ))}
+                              </ul>
+                            )}
+                          </motion.div>
+                        ))}
                       </motion.div>
                     )}
                   </AnimatePresence>

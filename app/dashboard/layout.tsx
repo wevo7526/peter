@@ -4,13 +4,14 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import Sidebar from '../components/Sidebar';
 import { supabase } from '@/app/lib/supabase';
+import { User } from '@supabase/supabase-js';
 
 export default function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
@@ -58,10 +59,8 @@ export default function DashboardLayout({
 
   return (
     <div className="min-h-screen flex">
-      <div className="w-64 flex-shrink-0">
-        <Sidebar />
-      </div>
-      <main className="flex-1 bg-gray-50 p-8">
+      <Sidebar />
+      <main className="flex-1 ml-64 bg-gray-50 p-8">
         {children}
       </main>
     </div>

@@ -50,7 +50,7 @@ export default function Sidebar() {
   ];
 
   return (
-    <div className="flex flex-col h-full bg-white border-r border-gray-200">
+    <div className="fixed inset-y-0 left-0 w-64 flex flex-col bg-white border-r border-gray-200">
       <div className="flex items-center justify-center h-16 px-4 border-b border-gray-200">
         <div className="w-[100px] h-[100px] relative">
           <Image
@@ -61,7 +61,7 @@ export default function Sidebar() {
           />
         </div>
       </div>
-      <nav className="flex-1 px-2 py-4 space-y-1">
+      <nav className="flex-1 px-2 py-4 space-y-1 overflow-y-auto">
         {navigation.map((item) => {
           const isActive = pathname === item.href;
           return (
